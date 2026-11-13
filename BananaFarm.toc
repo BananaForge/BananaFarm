@@ -1,0 +1,19 @@
+## Interface: 11200
+## Title: |cffffd100Banana|rFarm
+## Title-deDE: |cffffd100Banana|rFarm
+## Notes: Lasher farm helper for Dire Maul East: auto-sell, auto-mail, session tracker.
+## Notes-deDE: Lasher-Farmhilfe für Düsterbruch Ost: Auto-Verkauf, Auto-Post, Session-Tracker.
+## Author: Luminar, Bareg (BananaForge)
+## Version: 0.1.0
+## SavedVariables: BananaFarmDB
+
+Core.lua
+Locale.lua
+VendorData.lua
+Prices.lua
+Lists.lua
+Mail.lua
+Vendor.lua
+Session.lua
+Probe.lua
+UI.lua
