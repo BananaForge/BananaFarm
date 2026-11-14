@@ -12,7 +12,7 @@ local UI = BF.UI
 local FONT = "Fonts\\FRIZQT__.TTF"
 local FONT_TITLE = "Fonts\\MORPHEUS.TTF"
 local WHITE = "Interface\\ChatFrame\\ChatFrameBackground"
-local ROWS = 12
+local ROWS = 16
 local ROW_H = 22
 
 UI.C = {
@@ -170,11 +170,16 @@ function UI:Check(parent, key, field, onChange)
   local fs = self:Font(b, 11, C.text)
   fs:SetPoint("LEFT", box, "RIGHT", 6, 0)
   self:Loc(fs, key)
+  -- field: Name eines Feldes der Datenbank oder { get = fn, set = fn }
+  local function get()
+    if type(field) == "table" then return field.get() end
+    return BananaFarmDB[field]
+  end
   b.Update = function()
-    if BananaFarmDB[field] then chk:Show() else chk:Hide() end
+    if get() then chk:Show() else chk:Hide() end
   end
   b:SetScript("OnClick", function()
-    BananaFarmDB[field] = not BananaFarmDB[field]
+    if type(field) == "table" then field.set(not get()) else BananaFarmDB[field] = not get() end
     PlaySound("igMainMenuOptionCheckBoxOn")
     b.Update()
     if onChange then onChange() end
@@ -247,7 +252,7 @@ function UI:Init()
 end
 
 function UI:BuildMain()
-  local f = self:Window("BananaFarmFrame", 480, 470)
+  local f = self:Window("BananaFarmFrame", 480, 558)
   self.frame = f
   if not BananaFarmDB.pos["BananaFarmFrame"] then f:SetPoint("CENTER", UIParent, "CENTER", 0, 40) end
   tinsert(UISpecialFrames, "BananaFarmFrame")
@@ -534,6 +539,18 @@ function UI:BuildSettings(p)
       local n = num(v)
       if n and n >= 0 then BananaFarmDB.bagWarn = floor(n) end
     end)
+  editRow("SET_RESETLIMIT", "BananaFarmEditResetLimit", 50,
+    function() return tostring(BananaFarmDB.resetLimit) end,
+    function(v)
+      local n = num(v)
+      if n and n >= 1 then BananaFarmDB.resetLimit = floor(n) end
+    end)
+  editRow("SET_PULLLIMIT", "BananaFarmEditPullLimit", 50,
+    function() return tostring(BananaFarmDB.pullLimit) end,
+    function(v)
+      local n = num(v)
+      if n and n >= 1 then BananaFarmDB.pullLimit = floor(n) end
+    end)
 
   y = y - 6
   local function checkRow(key, field, onChange)
@@ -546,6 +563,9 @@ function UI:BuildSettings(p)
   checkRow("CHK_GRAY", "grayVendor", resort)
   checkRow("CHK_POPUP", "popup", function() BF.Lists:PopNext() end)
   checkRow("CHK_AUTOSELL", "autoSell")
+  checkRow("CHK_PROTECT", "protect")
+  checkRow("CHK_HUNTER", { get = function() return BF:HunterMode() end, set = function(v) BF:SetHunterMode(v) end },
+    function() UI:Refresh() end)
   checkRow("CHK_MAILASK", "mailAsk")
   checkRow("CHK_ALTCLICK", "altClick")
   checkRow("CHK_BAR", "bar", function() UI:Refresh() end)
@@ -608,21 +628,44 @@ end
 function UI:RefreshSession()
   local S = BF.Session
   local running = S:Running()
-  local text
   local s = BananaFarmDB.session
-  if running or (s.elapsed or 0) > 0 then
-    local value = S:Value()
-    text = BF.Duration(S:Elapsed()) .. "  " .. BF.Money(value) .. "  |cff9a9cb3" .. BF.Money(S:PerHour()) .. "/h|r"
-  else
-    text = "|cff9a9cb3" .. T("BAR_IDLE") .. "|r"
-  end
+  local active = running or (s.elapsed or 0) > 0
   local label = T(running and "BTN_STOP" or "BTN_START")
+  local gray = "|cff9a9cb3"
+
   if self.frame:IsVisible() then
+    local text
+    if active then
+      text = BF.Duration(S:Elapsed()) .. "  " .. BF.Money(S:Value()) .. "  " .. gray .. BF.Money(S:PerHour()) .. "/h|r"
+    else
+      text = gray .. T("BAR_IDLE") .. "|r"
+    end
     self.sessText:SetText(text)
     self.sessBtn.fs:SetText(label)
   end
+
   if self.bar:IsVisible() then
-    self.bar.text:SetText(text)
+    -- Zeile 1: Gold im Run, in der Session, pro Stunde
+    local line1
+    if active then
+      line1 = gray .. T("BAR_RUN") .. "|r " .. BF.Money(S:RunValue())
+        .. "  " .. gray .. T("BAR_SESSION") .. "|r " .. BF.Money(S:Value())
+        .. "  " .. gray .. "g/h|r " .. BF.Money(S:PerHour())
+    else
+      line1 = gray .. T("BAR_IDLE") .. "|r"
+    end
+    -- Zeile 2: Dauer, Resets der letzten Stunde mit Countdown, Pull-Zaehler
+    local n, left = BF.Resets:Recent()
+    local limit = BF.Resets:Limit()
+    local rc = "ffffff"
+    if n >= limit then rc = "ff4040" elseif n >= limit - 1 then rc = "ffd100" end
+    local line2 = T("BAR_RESETS") .. " |cff" .. rc .. n .. "/" .. limit .. "|r"
+    if n > 0 then line2 = line2 .. " (" .. BF.Duration(left) .. ")" end
+    if active then line2 = BF.Duration(S:Elapsed()) .. "   " .. line2 end
+    local pulls = BF.Pulls:Text()
+    if pulls then line2 = line2 .. "   " .. T("BAR_PULLS") .. " " .. pulls end
+    self.bar.text:SetText(line1)
+    self.bar.text2:SetText(line2)
     self.bar.btn.fs:SetText(label)
   end
 end
@@ -635,11 +678,11 @@ function UI:Refresh()
 end
 
 -- ------------------------------------------------------------
--- Kleine Leiste: Start/Stop, Dauer, Wert, Gold/h
--- (Pull-Zaehler und Loot-Knopf kommen nach /bf probe dazu)
+-- Kleine Leiste: Start/Stop, Gold im Run / in der Session / pro Stunde,
+-- darunter Dauer, Resets der letzten Stunde und Pull-Zaehler
 -- ------------------------------------------------------------
 function UI:BuildBar()
-  local f = self:Window("BananaFarmBar", 300, 30)
+  local f = self:Window("BananaFarmBar", 340, 44)
   self.bar = f
   f:SetFrameStrata("MEDIUM")
   f:SetToplevel(false)
@@ -656,9 +699,13 @@ function UI:BuildBar()
   end)
   open:SetScript("OnLeave", function() GameTooltip:Hide() end)
   f.text = self:Font(f, 10)
-  f.text:SetPoint("LEFT", f.btn, "RIGHT", 8, 0)
-  f.text:SetPoint("RIGHT", open, "LEFT", -6, 0)
+  f.text:SetPoint("TOPLEFT", f.btn, "TOPRIGHT", 8, 5)
+  f.text:SetPoint("TOPRIGHT", open, "TOPLEFT", -6, 5)
   f.text:SetJustifyH("CENTER")
+  f.text2 = self:Font(f, 10, C.muted)
+  f.text2:SetPoint("BOTTOMLEFT", f.btn, "BOTTOMRIGHT", 8, -5)
+  f.text2:SetPoint("BOTTOMRIGHT", open, "BOTTOMLEFT", -6, -5)
+  f.text2:SetJustifyH("CENTER")
   f.tick = 0
   f:SetScript("OnUpdate", function()
     this.tick = this.tick + (arg1 or 0)

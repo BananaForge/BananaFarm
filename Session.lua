@@ -13,6 +13,33 @@ function Session:OnLoad()
   local s = BananaFarmDB.session
   -- eine laufende Session ueberlebt /reload und Relog: die Uhr laeuft ab jetzt weiter
   if s.running then s.t0 = time() end
+  -- Sessions aus 0.1.0 kennen noch keinen Run
+  s.resets = s.resets or 0
+  s.run = s.run or { items = {}, coin = 0, start = s.elapsed or 0 }
+end
+
+-- Ein Instanz-Reset beendet den Run und beginnt den naechsten
+function Session:NewRun()
+  local s = BananaFarmDB.session
+  if not s.running then return end
+  s.resets = (s.resets or 0) + 1
+  s.run = { items = {}, coin = 0, start = self:Elapsed() }
+end
+
+-- Wert des laufenden Runs (seit dem letzten Reset) in Kupfer
+function Session:RunValue()
+  local run = BananaFarmDB.session.run
+  if not run then return 0 end
+  local sum = run.coin or 0
+  for id, c in pairs(run.items) do sum = sum + self:ItemValue(id) * c end
+  return sum
+end
+
+function Session:RunElapsed()
+  local run = BananaFarmDB.session.run
+  local e = self:Elapsed() - ((run and run.start) or 0)
+  if e < 0 then e = 0 end
+  return e
 end
 
 function Session:Running()
@@ -22,7 +49,8 @@ end
 function Session:Start()
   local db = BananaFarmDB
   if db.session.running then return end
-  db.session = { running = true, t0 = time(), elapsed = 0, items = {}, coin = 0 }
+  db.session = { running = true, t0 = time(), elapsed = 0, items = {}, coin = 0, resets = 0,
+    run = { items = {}, coin = 0, start = 0 } }
   self.snap = BF.BagCounts()
   self.warned = nil
   -- was schon in den Taschen liegt, gleich einsortieren (zaehlt nicht als Beute)
@@ -89,6 +117,7 @@ function Session:OnBags()
       local d = c - (self.snap[id] or 0)
       if d > 0 then
         s.items[id] = (s.items[id] or 0) + d
+        s.run.items[id] = (s.run.items[id] or 0) + d
         BF.Lists:Seen(id)
       end
     end
@@ -121,5 +150,6 @@ BF:On("PLAYER_MONEY", function()
   local s = BananaFarmDB.session
   if s.running and delta > 0 and not BF.Busy() then
     s.coin = (s.coin or 0) + delta
+    s.run.coin = (s.run.coin or 0) + delta
   end
 end)

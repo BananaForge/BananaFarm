@@ -47,7 +47,9 @@ function Vendor:Step()
   local _, count = GetContainerItemInfo(p.bag, p.slot)
   if id == p.id and (count or 1) == p.c and BF.Lists:Get(id) == "V" then
     if CursorHasItem() then ClearCursor() end
+    self.selling = true
     UseContainerItem(p.bag, p.slot)
+    self.selling = nil
     table.insert(r.tried, p)
     r.pending = r.pending + 1
     r.lastSold = p
@@ -98,6 +100,30 @@ function Vendor:Finish()
     BF:Print(string.format(BF.T("MSG_SOLD"), sold, items, BF.Money(income)))
   end
   if BF.UI then BF.UI:Refresh() end
+end
+
+-- Verkaufsschutz: solange eine Session laeuft, laesst sich beim Haendler von Hand nur verkaufen,
+-- was auf der Vendorliste steht. Alt gedrueckt halten hebt den Schutz fuer diesen Klick auf.
+-- Der Haken sitzt auf UseContainerItem, damit er auch mit Taschen-Addons greift.
+local origUse
+function Vendor:HookUse()
+  if origUse or not UseContainerItem then return end
+  origUse = UseContainerItem
+  UseContainerItem = function(bag, slot, a3)
+    if BF.ready and BF.merchantOpen and not Vendor.selling and BananaFarmDB.protect
+      and BF.Session:Running() and not IsAltKeyDown() then
+      local id = BF.ItemID(GetContainerItemLink(bag, slot))
+      if id and BF.Lists:Get(id) ~= "V" then
+        local now = GetTime()
+        if not Vendor.lastBlock or now - Vendor.lastBlock > 1 then
+          Vendor.lastBlock = now
+          BF:Print(string.format(BF.T("MSG_PROTECTED"), BF:ColoredName(id)))
+        end
+        return
+      end
+    end
+    return origUse(bag, slot, a3)
+  end
 end
 
 BF:On("MERCHANT_SHOW", function()

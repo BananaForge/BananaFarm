@@ -9,7 +9,7 @@
 BananaFarm = {}
 local BF = BananaFarm
 
-BF.VERSION = "0.1.0"
+BF.VERSION = "0.2.0"
 
 local getn = table.getn
 local floor = math.floor
@@ -188,6 +188,9 @@ BF.DEFAULTS = {
   altClick = true,     -- Alt+Klick in der Tasche ordnet zu
   bar = true,          -- kleine Leiste anzeigen
   bagWarn = 4,         -- Warnung ab so wenigen freien Plaetzen (0 = aus)
+  protect = true,      -- in der Session: beim Haendler nur die Vendorliste verkaufbar
+  resetLimit = 5,      -- erlaubte Instanz-Resets pro Stunde
+  pullLimit = 80,      -- Hunter-Modus: ab so vielen Mobs verschwinden die Leichen
 }
 
 function BF:InitDB()
@@ -205,8 +208,23 @@ function BF:InitDB()
   db.learned = db.learned or {}   -- [id] = beim Haendler beobachteter Stueckpreis
   db.noSell = db.noSell or {}     -- [id] = true: der Haendler nimmt es nicht
   db.pos = db.pos or {}
-  db.session = db.session or { running = false, elapsed = 0, items = {}, coin = 0 }
+  db.resets = db.resets or {}     -- Uhrzeiten der Instanz-Resets der letzten Stunde
+  db.hunter = db.hunter or {}     -- [Charname] = true/false: Hunter-Modus von Hand
+  db.session = db.session or { running = false, elapsed = 0, items = {}, coin = 0, resets = 0,
+    run = { items = {}, coin = 0, start = 0 } }
   if first then db.manual[6948] = "I" end -- Ruhestein
+end
+
+-- Hunter-Modus: von Hand gesetzt, sonst an fuer Jaeger
+function BF:HunterMode()
+  local o = BananaFarmDB.hunter[UnitName("player") or ""]
+  if o ~= nil then return o end
+  local _, class = UnitClass("player")
+  return class == "HUNTER"
+end
+
+function BF:SetHunterMode(on)
+  BananaFarmDB.hunter[UnitName("player") or ""] = on and true or false
 end
 
 -- ------------------------------------------------------------
@@ -271,6 +289,9 @@ BF:On("VARIABLES_LOADED", function()
   BF.money = GetMoney()
   if BF.UI then BF.UI:Init() end
   if BF.Session then BF.Session:OnLoad() end
+  BF.Vendor:HookUse()
+  BF.Resets:Hook()
+  BF.Pulls:Init()
   BF:Print(string.format(BF.T("MSG_LOADED"), BF.VERSION))
 end)
 
@@ -322,8 +343,10 @@ SlashCmdList["BANANAFARM"] = function(msg)
     BF.Mail:Start()
   elseif cmd == "sell" then
     BF.Vendor:Start()
+  elseif cmd == "reset" then
+    BF.Resets:Do()
   else
-    for i = 1, 9 do BF:Print(BF.T("HELP_" .. i)) end
+    for i = 1, 10 do BF:Print(BF.T("HELP_" .. i)) end
   end
 end
 
