@@ -1,4 +1,4 @@
--- BananaFarm Listen: Vendor (V), Mail (M), Ignorieren (I), Unsortiert (U).
+-- BananaFarm Listen: Vendor (V), Mail (M), Ignorieren (I), Behalten (K), Unsortiert (U).
 -- Eine Zuordnung von Hand schlaegt immer die Automatik. Unsortierte Items bleiben in den Taschen.
 
 local BF = BananaFarm
@@ -7,7 +7,7 @@ local getn = table.getn
 BF.Lists = { queue = {} }
 local Lists = BF.Lists
 
-BF.LIST_KEYS = { "V", "M", "I", "U" }
+BF.LIST_KEYS = { "V", "M", "I", "K", "U" }
 
 -- "V" | "M" | "I" | "U" | nil (dem Addon unbekannt)
 function Lists:Get(id)
@@ -22,11 +22,21 @@ function Lists:IsManual(id)
   return BananaFarmDB.manual[id] ~= nil
 end
 
--- Zuordnung von Hand. list = "V" | "M" | "I", "U" (zurueck zu unsortiert) oder nil (ganz entfernen)
+-- Wirksame Liste: "Behalten" (K) schuetzt nur, solange die Session laeuft (und die Option an ist).
+-- Sonst entscheidet die Standardregel, als stuende das Item nicht auf K.
+function Lists:Eff(id)
+  local l = self:Get(id)
+  if l ~= "K" then return l end
+  if BananaFarmDB.keepProtect and BF.Session and BF.Session:Running() then return "K" end
+  return BananaFarmDB.auto[id] or self:Classify(id) or "U"
+end
+
+-- Zuordnung von Hand. list = "V" | "M" | "I" | "K", "U" (zurueck zu unsortiert) oder nil (ganz entfernen)
 function Lists:Set(id, list)
   local db = BananaFarmDB
   BF:ItemInfo(id)
-  if list == "V" or list == "M" or list == "I" then
+  db.manualTs[id] = time()
+  if list == "V" or list == "M" or list == "I" or list == "K" then
     db.manual[id] = list
     db.auto[id] = nil
     db.unsorted[id] = nil

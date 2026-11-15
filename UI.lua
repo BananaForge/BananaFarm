@@ -247,7 +247,7 @@ function UI:Init()
 end
 
 function UI:BuildMain()
-  local f = self:Window("BananaFarmFrame", 480, 470)
+  local f = self:Window("BananaFarmFrame", 480, 500)
   self.frame = f
   if not BananaFarmDB.pos["BananaFarmFrame"] then f:SetPoint("CENTER", UIParent, "CENTER", 0, 40) end
   tinsert(UISpecialFrames, "BananaFarmFrame")
@@ -308,7 +308,7 @@ function UI:BuildLists(p)
   local prev
   for i = 1, getn(BF.LIST_KEYS) do
     local key = BF.LIST_KEYS[i]
-    local b = self:Button(p, 108, 22, nil, function()
+    local b = self:Button(p, 86, 22, nil, function()
       UI.sel = key
       UI.offset = 0
       UI:RefreshList()
@@ -361,16 +361,16 @@ function UI:BuildLists(p)
     r:SetScript("OnLeave", function() GameTooltip:Hide() end)
     -- Knoepfe: auf eine andere Liste schieben oder entfernen
     r.btn = {}
-    local defs = { { "V", "V" }, { "M", "M" }, { "I", "I" }, { "X", nil } }
-    for j = 1, 4 do
+    local defs = { { "V", "V" }, { "M", "M" }, { "I", "I" }, { "K", "K" }, { "X", nil } }
+    for j = 1, 5 do
       local list = defs[j][2]
       local label = defs[j][1]
-      local b = self:Button(r, 19, 18, label, function()
+      local b = self:Button(r, 16, 18, label, function()
         local id = r.id
         if not id then return end
         BF.Lists:Set(id, list)
       end, list and "flat" or "danger")
-      b:SetPoint("RIGHT", r, "RIGHT", -2 - (4 - j) * 20, 0)
+      b:SetPoint("RIGHT", r, "RIGHT", -2 - (5 - j) * 17, 0)
       b:SetScript("OnEnter", function()
         GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
         GameTooltip:AddLine(list and T("LIST_" .. list) or T("TT_REMOVE"), 1, 0.82, 0.26)
@@ -510,6 +510,13 @@ function UI:BuildSettings(p)
   editRow("SET_ALT", "BananaFarmEditAlt", 110,
     function() return BananaFarmDB.bankAlt end,
     function(v) BF:SetBankAlt(v) end)
+  editRow("SET_SYNCPEER", "BananaFarmEditSyncPeer", 110,
+    function() return BananaFarmDB.syncPeer or "" end,
+    function(v)
+      v = string.gsub(BF.Trim(v), "%s", "")
+      BananaFarmDB.syncPeer = v
+      if v ~= "" then BF:Print(string.format(T("MSG_SYNC_PEER"), v)) end
+    end)
   editRow("SET_THRESHOLD", "BananaFarmEditThreshold", 50,
     function() return tostring(BananaFarmDB.threshold) end,
     function(v)
@@ -549,6 +556,8 @@ function UI:BuildSettings(p)
   checkRow("CHK_MAILASK", "mailAsk")
   checkRow("CHK_ALTCLICK", "altClick")
   checkRow("CHK_BAR", "bar", function() UI:Refresh() end)
+  checkRow("CHK_KEEP", "keepProtect")
+  checkRow("CHK_SYNC", "autoSync")
 
   y = y - 10
   local lang = self:Font(p, 11)
@@ -610,11 +619,18 @@ function UI:RefreshSession()
   local running = S:Running()
   local text
   local s = BananaFarmDB.session
+  local R = BF.Resets
+  local n = R:Count()
+  local rem = R:Remaining()
+  local rtxt = T("BAR_RESETS") .. " " .. n .. "/" .. R.LIMIT
+  if rem then rtxt = rtxt .. " " .. BF.Duration(rem) end
+  if n >= R.LIMIT then rtxt = "|cffff5050" .. rtxt .. "|r" else rtxt = "|cff9a9cb3" .. rtxt .. "|r" end
   if running or (s.elapsed or 0) > 0 then
     local value = S:Value()
-    text = BF.Duration(S:Elapsed()) .. "  " .. BF.Money(value) .. "  |cff9a9cb3" .. BF.Money(S:PerHour()) .. "/h|r"
+    text = BF.Duration(S:Elapsed()) .. "  " .. BF.Money(S:PerHour()) .. "/h"
+    text = text .. "\n|cff9a9cb3" .. T("BAR_GOLD") .. "|r " .. BF.Money(value) .. "  " .. rtxt
   else
-    text = "|cff9a9cb3" .. T("BAR_IDLE") .. "|r"
+    text = "|cff9a9cb3" .. T("BAR_IDLE") .. "|r\n" .. rtxt
   end
   local label = T(running and "BTN_STOP" or "BTN_START")
   if self.frame:IsVisible() then
@@ -639,7 +655,7 @@ end
 -- (Pull-Zaehler und Loot-Knopf kommen nach /bf probe dazu)
 -- ------------------------------------------------------------
 function UI:BuildBar()
-  local f = self:Window("BananaFarmBar", 300, 30)
+  local f = self:Window("BananaFarmBar", 320, 44)
   self.bar = f
   f:SetFrameStrata("MEDIUM")
   f:SetToplevel(false)

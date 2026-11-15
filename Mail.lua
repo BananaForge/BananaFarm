@@ -9,6 +9,8 @@ BF.Mail = {}
 local Mail = BF.Mail
 
 BF.POSTAGE = 30 -- Kupfer pro Anhang
+BF.TM_MAX = 21 -- so viele Anhaenge fasst das TurtleMail-Sendefenster
+BF.TM_BATCH = 1 -- Briefe je TurtleMail-Durchgang: bei mehreren in Folge scheiterte ab dem 2. Brief der Versand
 
 -- Wie viele Anhaenge nimmt dieser Client? Vanilla kann einen, OctoWoW mehrere.
 function Mail:Slots()
@@ -25,7 +27,7 @@ end
 -- Ersetzt TurtleMail das Sendefenster? Dann gehen Anhaenge und Senden ueber dessen eigene Funktionen.
 function Mail:TurtleMailActive()
   return type(TurtleMail) == "table" and type(TurtleMail.send_mail_button_onclick) == "function"
-    and type(TurtleMail.sendmail_attached) == "function"
+    and type(TurtleMail.sendmail_attached) == "function" and type(TurtleMail.sendmail_set_attachment) == "function"
 end
 
 local function tryClick(index)
@@ -48,7 +50,7 @@ end
 function Mail:Collect()
   local list = {}
   BF.EachBagItem(function(bag, slot, id, count, locked)
-    if not locked and BF.Lists:Get(id) == "M" and not BF.IsSoulbound(bag, slot) then
+    if not locked and BF.Lists:Eff(id) == "M" and not BF.IsSoulbound(bag, slot) then
       table.insert(list, { bag = bag, slot = slot, id = id, c = count })
     end
   end)
@@ -104,7 +106,66 @@ function Mail:Next()
   -- Schritt 1: auf den Reiter Senden wechseln. Der Client nimmt einen Anhang
   -- erst an, wenn dieser Reiter offen ist, und braucht dafuer einen Moment.
   if MailFrameTab_OnClick then pcall(MailFrameTab_OnClick, 2) end
-  BF:After(0.3, function() Mail:Step2() end, "mailstep")
+  BF:After(0.3, function()
+    if Mail:TurtleMailActive() then Mail:TurtleAttach() else Mail:Step2() end
+  end, "mailstep")
+end
+
+-- TurtleMail: Anhaenge direkt ueber dessen eigene Funktion setzen (der Klick-Weg scheitert dort,
+-- weil TurtleMail das Cursor-Item erst im naechsten Frame kennt). TurtleMail verschickt dann
+-- pro Anhang einen eigenen Brief und arbeitet die Liste selbst ab.
+function Mail:TurtleAttach()
+  local r = self.run
+  if not r then return end
+  if not BF.mailOpen then return self:Stop("ERR_MAIL_CLOSED") end
+  r.turtle = true
+  local max = math.floor(GetMoney() / BF.POSTAGE)
+  if max > BF.TM_MAX then max = BF.TM_MAX end
+  if max > BF.TM_BATCH then max = BF.TM_BATCH end
+  local batch = {}
+  local k = r.idx
+  while r.list[k] and getn(batch) < max do
+    local e = r.list[k]
+    local id = BF.ItemID(GetContainerItemLink(e.bag, e.slot))
+    if id == e.id then
+      pcall(TurtleMail.sendmail_set_attachment, { e.bag, e.slot })
+      if TurtleMail.sendmail_attached(e.bag, e.slot) then table.insert(batch, e) end
+    end
+    k = k + 1
+  end
+  r.idx = k
+  if getn(batch) == 0 then
+    if r.mails > 0 and not r.list[r.idx] then return self:Stop() end
+    return self:AttachFailed()
+  end
+  r.batch = batch
+  r.got = 0
+  self:TurtleSend()
+end
+
+function Mail:TurtleSend()
+  local r = self.run
+  if not r or not r.batch then return end
+  if SendMailNameEditBox then
+    if SendMailNameEditBox._SetText then SendMailNameEditBox:_SetText(r.to) else SendMailNameEditBox:SetText(r.to) end
+  end
+  -- leerer Betreff: TurtleMail setzt selbst den Itemnamen. TurtleMail liest den Betreff aus dem
+  -- globalen MailSubjectEditBox (ein Rest wie "bitte" landete sonst in jedem Brief).
+  if MailSubjectEditBox then MailSubjectEditBox:SetText("") end
+  if SendMailSubjectEditBox then SendMailSubjectEditBox:SetText("") end
+  if SendMailBodyEditBox then SendMailBodyEditBox:SetText("") end
+  if SendMailMoney and MoneyInputFrame_SetCopper then pcall(MoneyInputFrame_SetCopper, SendMailMoney, 0) end
+  if SendMailRadioButton_OnClick then pcall(SendMailRadioButton_OnClick, 1) end
+  r.sending = true
+  self:ArmTimeout()
+  if not pcall(TurtleMail.send_mail_button_onclick) then self:Fail("ERR_MAIL_FAILED") end
+end
+
+function Mail:ArmTimeout()
+  BF:Cancel("mailtimeout")
+  BF:After(15, function()
+    if Mail.run and Mail.run.sending then Mail:Fail("ERR_MAIL_TIMEOUT") end
+  end, "mailtimeout")
 end
 
 -- haengt einen Stapel an: true (liegt im Brief), "wait" (spaeter pruefen) oder false
@@ -219,6 +280,10 @@ end
 
 -- Anhaenge zurueck in die Taschen
 function Mail:ClearAttachments()
+  if self:TurtleMailActive() then
+    if TurtleMail.sendmail_clear then pcall(TurtleMail.sendmail_clear) end
+    return
+  end
   if not ClickSendMailItemButton then return end
   for i = 1, self:Slots() do
     tryClick(self:Slots() > 1 and i or nil)
@@ -257,13 +322,42 @@ function Mail:Fail(errKey)
   local r = self.run
   if not r then return end
   r.sending = false
+  if r.turtle and type(TurtleMail) == "table" then
+    TurtleMail.sendmail_sending = false
+    TurtleMail.sendmail_state = nil
+  end
   self:ClearAttachments()
+  local detail = self.lastErr
+  self.lastErr = nil
   self:Stop(errKey)
+  if detail then BF:Error("-> " .. tostring(detail)) end
 end
+
+-- letzte Fehlermeldung des Spiels merken, damit ein Fehlschlag den genauen Grund zeigt
+BF:On("UI_ERROR_MESSAGE", function(msg)
+  if Mail.run and Mail.run.sending then Mail.lastErr = msg end
+end)
 
 BF:On("MAIL_SEND_SUCCESS", function()
   local r = Mail.run
   if not r or not r.sending then return end
+  if r.turtle then
+    -- TurtleMail schickt pro Anhang einen Brief: erst weiter, wenn alle der Charge durch sind
+    r.mails = r.mails + 1
+    r.got = r.got + 1
+    local n = getn(r.batch or {})
+    if r.got < n then
+      Mail:ArmTimeout()
+      return
+    end
+    r.sending = false
+    BF:Cancel("mailtimeout")
+    r.stacks = r.stacks + n
+    r.batch = nil
+    r.got = 0
+    BF:After(1.0, function() Mail:Next() end, "mailstep")
+    return
+  end
   r.sending = false
   BF:Cancel("mailtimeout")
   r.mails = r.mails + 1
@@ -296,6 +390,7 @@ BF:On("MAIL_SHOW", function()
       return
     end
     local letters = math.ceil(n / Mail:Slots())
+    if Mail:TurtleMailActive() then letters = n end
     BF.UI:Confirm("mail", string.format(BF.T("ASK_MAIL"), n, db.bankAlt, letters, BF.Money(n * BF.POSTAGE)),
       function() Mail:Start() end)
   end, "mailask")
