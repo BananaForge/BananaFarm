@@ -11,8 +11,12 @@ local CHECK = {
   "TrackUnit", "UntrackUnit", "ImportFile", "ExportFile", "SetMouseoverUnit", "GetPlayerBuffID",
   "QueueSpellByName", "CastSpellByNameNoQueue", "IsSpellInRange", "GetCastInfo", "GetCurrentCastingInfo",
   "UnitXP", "GetObjects", "GetUnitGUID", "UnitGUID", "ResetInstances", "ConfirmLootSlot",
+  "RunMacroText", "RunMacro", "ChatEdit_SendText", "SendChatMessage", "GetNumBindings", "GetBinding",
+  "GetMouseFocus", "UseContainerItem", "TargetUnit", "AssistUnit", "CastSpellByName",
 }
-local WORDS = { "loot", "interact", "guid", "corpse" }
+local WORDS = { "loot", "interact", "corpse", "click", "mouse", "object", "nearest", "pickup", "macro", "guid" }
+local BINDWORDS = { "INTERACT", "LOOT", "MOUSEOVER", "AUTO" }
+local SLASHWORDS = { "LOOT", "INTERACT", "CLICK", "MACRO", "NAMPOWER", "SUPERWOW" }
 local CVARS = { "autoLootDefault", "AutoLoot", "NP_QueueCastTimeSpells", "NP_SpamProtectionEnabled", "FoV" }
 
 function BF:Probe()
@@ -51,29 +55,84 @@ function BF:Probe()
   end
 
   add("")
-  add("-- Funktionen mit loot/interact/guid/corpse im Namen --")
-  local names = {}
+  -- alle globalen Funktionsnamen einsammeln (komplett in die DB, gefiltert ins Fenster)
+  local all = {}
   for k, val in pairs(getfenv(0)) do
-    if type(k) == "string" and type(val) == "function" then
-      local low = string.lower(k)
-      for i = 1, getn(WORDS) do
-        if string.find(low, WORDS[i], 1, true) then
-          table.insert(names, k)
+    if type(k) == "string" and type(val) == "function" then table.insert(all, k) end
+  end
+  table.sort(all)
+  BananaFarmDB.probeAll = table.concat(all, " ")
+  add("-- Funktionen nach Stichwort (alle " .. getn(all) .. " Namen stehen in BananaFarmDB.probeAll) --")
+  for w = 1, getn(WORDS) do
+    local hits = {}
+    for i = 1, getn(all) do
+      if string.find(string.lower(all[i]), WORDS[w], 1, true) then table.insert(hits, all[i]) end
+    end
+    add("[" .. WORDS[w] .. "] " .. getn(hits))
+    local line = ""
+    for i = 1, getn(hits) do
+      if string.len(line) + string.len(hits[i]) > 90 then
+        add(line)
+        line = ""
+      end
+      line = line .. hits[i] .. "  "
+    end
+    if line ~= "" then add(line) end
+  end
+
+  -- Tastenbelegungen: gibt es einen Interact-/Loot-Befehl, der sich ueber Makro nutzen laesst?
+  add("")
+  add("-- Tastenbelegungen (INTERACT/LOOT/MOUSEOVER/AUTO) --")
+  if GetNumBindings and GetBinding then
+    local found = 0
+    for i = 1, GetNumBindings() do
+      local cmd, k1, k2 = GetBinding(i)
+      if cmd then
+        local up = string.upper(cmd)
+        for w = 1, getn(BINDWORDS) do
+          if string.find(up, BINDWORDS[w], 1, true) then
+            add(cmd .. ": " .. tostring(k1) .. " " .. tostring(k2))
+            found = found + 1
+            break
+          end
+        end
+      end
+    end
+    if found == 0 then add("(keine)") end
+  else
+    add("GetNumBindings: nil")
+  end
+
+  -- Slash-Befehle (Makros koennen nur Slash-Befehle und /script ausfuehren)
+  add("")
+  add("-- Slash-Befehle (LOOT/INTERACT/CLICK/MACRO/NAMPOWER/SUPERWOW) --")
+  local sl = ""
+  local n = 0
+  if SlashCmdList then
+    for k, val in pairs(SlashCmdList) do
+      n = n + 1
+      local up = string.upper(tostring(k))
+      for w = 1, getn(SLASHWORDS) do
+        if string.find(up, SLASHWORDS[w], 1, true) then
+          sl = sl .. tostring(k) .. "  "
           break
         end
       end
     end
   end
-  table.sort(names)
-  local line = ""
-  for i = 1, getn(names) do
-    if string.len(line) + string.len(names[i]) > 90 then
-      add(line)
-      line = ""
-    end
-    line = line .. names[i] .. "  "
+  add("SlashCmdList gesamt: " .. n)
+  if sl ~= "" then add(sl) end
+
+  -- Ziel-Check: ist das Ziel eine Leiche, und ist sie lootbar?
+  add("")
+  add("-- Ziel --")
+  if UnitExists("target") then
+    add("UnitIsDead(target): " .. tostring(UnitIsDead("target")))
+    add("UnitName(target): " .. tostring(UnitName("target")))
+    add("LootFrame sichtbar: " .. tostring(LootFrame and LootFrame:IsVisible()))
+  else
+    add("(kein Ziel: fuer diesen Teil eine tote Leiche anvisieren)")
   end
-  if line ~= "" then add(line) end
 
   add("")
   add("-- CVars --")

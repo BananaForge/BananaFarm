@@ -9,9 +9,13 @@ BF.Session = {}
 local Session = BF.Session
 
 function Session:OnLoad()
-  self.snap = BF.BagCounts()
+  -- Beim Laden sind Taschen und Gold noch nicht da (Ladebildschirm). Erst nach
+  -- PLAYER_ENTERING_WORLD wird der Snapshot genommen, vorher zaehlt nichts als Beute.
+  self.snap = nil
+  self.settling = true
   local s = BananaFarmDB.session
-  -- eine laufende Session ueberlebt /reload und Relog: die Uhr laeuft ab jetzt weiter
+  -- eine laufende Session ueberlebt /reload und Relog: die Uhr laeuft ab jetzt weiter.
+  -- Die bis zum Logout gelaufene Zeit steht in s.elapsed (siehe PLAYER_LOGOUT).
   if s.running then s.t0 = time() end
   -- Sessions aus 0.1.0 kennen noch keinen Run
   s.resets = s.resets or 0
@@ -41,6 +45,27 @@ function Session:RunElapsed()
   if e < 0 then e = 0 end
   return e
 end
+
+-- Zonenwechsel, Login, /reload: Taschen und Gold neu abgleichen, bevor wieder gezaehlt wird
+BF:On("PLAYER_ENTERING_WORLD", function()
+  Session.settling = true
+  BF.money = GetMoney()
+  BF:After(3, function()
+    Session.snap = BF.BagCounts()
+    BF.money = GetMoney()
+    Session.settling = false
+    if BF.UI then BF.UI:Refresh() end
+  end, "sessionsettle")
+end)
+
+-- Laufzeit vor Logout/Reload sichern, sonst geht sie verloren (Gold/h wuerde viel zu hoch)
+BF:On("PLAYER_LOGOUT", function()
+  local s = BananaFarmDB.session
+  if s.running then
+    s.elapsed = Session:Elapsed()
+    s.t0 = nil
+  end
+end)
 
 function Session:Running()
   return BananaFarmDB.session.running
@@ -84,7 +109,7 @@ end
 -- Wert eines Items fuer den Tracker: was auf der Mailliste steht, zaehlt mit dem AH-Preis,
 -- alles andere mit dem Haendlerwert.
 function Session:ItemValue(id)
-  if BF.Lists:Get(id) == "M" then
+  if BF.Lists:Eff(id) == "M" then
     local ah = BF:AHNet(id)
     if ah then return ah end
   end
@@ -112,6 +137,7 @@ end
 function Session:OnBags()
   local now = BF.BagCounts()
   local s = BananaFarmDB.session
+  if self.settling then return end
   if s.running and self.snap and not BF.Busy() then
     for id, c in pairs(now) do
       local d = c - (self.snap[id] or 0)
@@ -148,7 +174,7 @@ BF:On("PLAYER_MONEY", function()
   local delta = now - (BF.money or now)
   BF.money = now
   local s = BananaFarmDB.session
-  if s.running and delta > 0 and not BF.Busy() then
+  if s.running and delta > 0 and not BF.Busy() and not Session.settling then
     s.coin = (s.coin or 0) + delta
     s.run.coin = (s.run.coin or 0) + delta
   end

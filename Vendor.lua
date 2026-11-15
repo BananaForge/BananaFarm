@@ -13,7 +13,7 @@ function Vendor:Collect()
   local list = {}
   local db = BananaFarmDB
   BF.EachBagItem(function(bag, slot, id, count, locked)
-    if not locked and BF.Lists:Get(id) == "V" and not db.noSell[id] then
+    if not locked and BF.Lists:Eff(id) == "V" and not db.noSell[id] then
       table.insert(list, { bag = bag, slot = slot, id = id, c = count })
     end
   end)
@@ -45,7 +45,7 @@ function Vendor:Step()
   r.idx = r.idx + 1
   local id = BF.ItemID(GetContainerItemLink(p.bag, p.slot))
   local _, count = GetContainerItemInfo(p.bag, p.slot)
-  if id == p.id and (count or 1) == p.c and BF.Lists:Get(id) == "V" then
+  if id == p.id and (count or 1) == p.c and BF.Lists:Eff(id) == "V" then
     if CursorHasItem() then ClearCursor() end
     self.selling = true
     UseContainerItem(p.bag, p.slot)
@@ -113,7 +113,7 @@ function Vendor:HookUse()
     if BF.ready and BF.merchantOpen and not Vendor.selling and BananaFarmDB.protect
       and BF.Session:Running() and not IsAltKeyDown() then
       local id = BF.ItemID(GetContainerItemLink(bag, slot))
-      if id and BF.Lists:Get(id) ~= "V" then
+      if id and BF.Lists:Eff(id) ~= "V" then
         local now = GetTime()
         if not Vendor.lastBlock or now - Vendor.lastBlock > 1 then
           Vendor.lastBlock = now

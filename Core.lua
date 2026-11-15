@@ -9,7 +9,7 @@
 BananaFarm = {}
 local BF = BananaFarm
 
-BF.VERSION = "0.2.0"
+BF.VERSION = "0.3.0"
 
 local getn = table.getn
 local floor = math.floor
@@ -101,7 +101,70 @@ function BF:ItemInfo(id)
   end
   local e = db.items[id]
   if e then return e.n, e.q or 1, e.t, e.y end
+  self:QueryItem(id)
   return "#" .. id, 1, nil, nil
+end
+
+-- ------------------------------------------------------------
+-- Unbekannte Items vom Server nachladen (z. B. Items, die nur der Partner kennt):
+-- ein unsichtbarer Tooltip mit dem Item-Link loest die Abfrage aus. Je Schritt hoechstens 3 IDs,
+-- jede ID wird bis zu 3-mal versucht. Sobald der Client das Item kennt, steht es in db.items.
+-- ------------------------------------------------------------
+BF.itemQ = { list = {}, set = {}, check = {}, tries = {} }
+
+function BF:QueryItem(id)
+  local q = self.itemQ
+  if type(id) ~= "number" or id < 1 or id > 99999 then return end
+  if q.set[id] or (q.tries[id] or 0) >= 3 then return end
+  q.set[id] = true
+  table.insert(q.list, id)
+  if not q.running then
+    q.running = true
+    self:After(0.5, function() BF:ItemQueryStep() end, "itemquery")
+  end
+end
+
+function BF:ItemQueryStep()
+  local q = self.itemQ
+  if not q.tip then
+    q.tip = CreateFrame("GameTooltip", "BananaFarmItemTip", UIParent, "GameTooltipTemplate")
+  end
+  local changed = false
+  -- zuvor Angefragte: angekommen?
+  local check = q.check
+  q.check = {}
+  for i = 1, getn(check) do
+    local id = check[i]
+    if GetItemInfo(id) then
+      self:ItemInfo(id)
+      changed = true
+    elseif (q.tries[id] or 0) < 3 then
+      self:QueryItem(id)
+    end
+  end
+  -- neue Anfragen
+  local n = 0
+  while getn(q.list) > 0 and n < 3 do
+    local id = table.remove(q.list, 1)
+    q.set[id] = nil
+    if GetItemInfo(id) then
+      self:ItemInfo(id)
+      changed = true
+    else
+      q.tries[id] = (q.tries[id] or 0) + 1
+      q.tip:SetOwner(UIParent, "ANCHOR_NONE")
+      q.tip:SetHyperlink("item:" .. id .. ":0:0:0")
+      q.tip:Hide()
+      table.insert(q.check, id)
+      n = n + 1
+    end
+  end
+  if changed and self.UI then self.UI:Refresh() end
+  if getn(q.list) > 0 or getn(q.check) > 0 then
+    self:After(0.6, function() BF:ItemQueryStep() end, "itemquery")
+  else
+    q.running = false
+  end
 end
 
 function BF:ColoredName(id)
@@ -191,6 +254,9 @@ BF.DEFAULTS = {
   protect = true,      -- in der Session: beim Haendler nur die Vendorliste verkaufbar
   resetLimit = 5,      -- erlaubte Instanz-Resets pro Stunde
   pullLimit = 80,      -- Hunter-Modus: ab so vielen Mobs verschwinden die Leichen
+  keepProtect = true,  -- Liste "Behalten" schuetzt nur waehrend einer laufenden Session
+  autoSync = true,     -- bei Login und vor dem Logout mit dem Partner abgleichen
+  syncPeer = "",       -- Sync-Partner (leer: Bankalt)
 }
 
 function BF:InitDB()
@@ -207,8 +273,14 @@ function BF:InitDB()
   db.ah = db.ah or {}             -- [id] = { u = Kupfer pro Stueck, ts = Zeit, n = Stichproben }
   db.learned = db.learned or {}   -- [id] = beim Haendler beobachteter Stueckpreis
   db.noSell = db.noSell or {}     -- [id] = true: der Haendler nimmt es nicht
+  db.resets = db.resets or {}     -- Zeitstempel (time()) der gezaehlten Instanz-Resets, max. 1 Stunde alt
+  db.manualTs = db.manualTs or {} -- [id] = Zeitpunkt der letzten Zuordnung von Hand (fuer den Sync)
+  db.sync = db.sync or { last = {}, since = {} }
+  -- aeltere Zuordnungen ohne Zeitstempel bekommen einen neutralen
+  for id in pairs(db.manual) do
+    if not db.manualTs[id] then db.manualTs[id] = 1 end
+  end
   db.pos = db.pos or {}
-  db.resets = db.resets or {}     -- Uhrzeiten der Instanz-Resets der letzten Stunde
   db.hunter = db.hunter or {}     -- [Charname] = true/false: Hunter-Modus von Hand
   db.session = db.session or { running = false, elapsed = 0, items = {}, coin = 0, resets = 0,
     run = { items = {}, coin = 0, start = 0 } }
@@ -290,7 +362,6 @@ BF:On("VARIABLES_LOADED", function()
   if BF.UI then BF.UI:Init() end
   if BF.Session then BF.Session:OnLoad() end
   BF.Vendor:HookUse()
-  BF.Resets:Hook()
   BF.Pulls:Init()
   BF:Print(string.format(BF.T("MSG_LOADED"), BF.VERSION))
 end)
@@ -345,8 +416,10 @@ SlashCmdList["BANANAFARM"] = function(msg)
     BF.Vendor:Start()
   elseif cmd == "reset" then
     BF.Resets:Do()
+  elseif cmd == "sync" then
+    BF.Sync:Command(rest)
   else
-    for i = 1, 10 do BF:Print(BF.T("HELP_" .. i)) end
+    for i = 1, 11 do BF:Print(BF.T("HELP_" .. i)) end
   end
 end
 
