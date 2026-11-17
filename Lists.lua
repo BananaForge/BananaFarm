@@ -152,7 +152,7 @@ function Lists:Enqueue(id)
 end
 
 function Lists:PopNext()
-  if not BananaFarmDB.popup or not BF.UI then return end
+  if not BananaFarmDB.popup or not BF.UI or not BF:Enabled("items") then return end
   if BF.UI:AssignShown() then return end
   if UnitAffectingCombat("player") then return end
   while getn(self.queue) > 0 do
@@ -176,7 +176,7 @@ function Lists:HookBags()
   if origClick or not ContainerFrameItemButton_OnClick then return end
   origClick = ContainerFrameItemButton_OnClick
   ContainerFrameItemButton_OnClick = function(button, ignoreModifiers)
-    if BF.ready and BananaFarmDB.altClick and button == "LeftButton" and IsAltKeyDown()
+    if BF.ready and BananaFarmDB.altClick and BF:Enabled("items") and button == "LeftButton" and IsAltKeyDown()
       and not IsShiftKeyDown() and not IsControlKeyDown() and this and this.GetParent then
       local id = BF.ItemID(GetContainerItemLink(this:GetParent():GetID(), this:GetID()))
       if id then

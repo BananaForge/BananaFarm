@@ -1,0 +1,5 @@
+<Bindings>
+  <Binding name="BANANAFARM_BAR" header="BANANAFARM">
+    BananaFarm.UI:ToggleBar()
+  </Binding>
+</Bindings>

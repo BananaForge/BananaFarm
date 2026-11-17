@@ -44,11 +44,13 @@ function R:Limit()
 end
 
 -- Zeitstempel vom Sync-Partner uebernehmen. true, wenn er neu war.
+-- Zeiten, die nur wenige Sekunden auseinanderliegen, sind derselbe Reset (Uhren und Meldungen
+-- laufen nicht auf die Sekunde gleich).
 function R:Merge(ts)
   local l = self:Prune()
   if type(ts) ~= "number" or time() - ts >= self.WINDOW then return false end
   for i = 1, getn(l) do
-    if l[i] == ts then return false end
+    if math.abs(l[i] - ts) <= 5 then return false end
   end
   table.insert(l, ts)
   table.sort(l)
@@ -56,13 +58,33 @@ function R:Merge(ts)
 end
 
 function R:Add()
+  if not BF:Enabled("resets") then return end
   -- mehrere Meldungen auf einmal (mehrere Instanzen) sind ein Reset
   local now = GetTime()
   if self.last and now - self.last < 3 then return end
   self.last = now
-  table.insert(self:Prune(), time())
+  -- hat der Partner diesen Reset schon gemeldet (Sync), zaehlt er nicht doppelt
+  local l = self:Prune()
+  for i = 1, getn(l) do
+    if math.abs(l[i] - time()) <= 5 then return end
+  end
+  local ts = time()
+  table.insert(l, ts)
+  if BF.Sync then BF.Sync:AfterReset(ts) end
   local n, limit = self:Count(), self:Limit()
   BF:Print(string.format(BF.T("MSG_RESET"), n, limit))
+  if n >= limit then BF:Error(BF.T("MSG_RESET_LIMIT")) end
+  BF.Session:NewRun()
+  if BF.UI then BF.UI:Refresh() end
+end
+
+-- Reset, den der Sync-Partner gemeldet hat (er hat die Instanz zurueckgesetzt): zaehlt wie ein
+-- eigener Reset und beginnt in der Session einen neuen Run.
+function R:Remote(ts)
+  if not BF:Enabled("resets") or type(ts) ~= "number" then return end
+  if not self:Merge(ts) then return end
+  local n, limit = self:Count(), self:Limit()
+  BF:Print(string.format(BF.T("MSG_RESET_PARTNER"), n, limit))
   if n >= limit then BF:Error(BF.T("MSG_RESET_LIMIT")) end
   BF.Session:NewRun()
   if BF.UI then BF.UI:Refresh() end

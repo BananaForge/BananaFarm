@@ -1,4 +1,4 @@
-# BananaFarm 0.3.0: Testliste
+# BananaFarm 0.4.0: Testliste
 
 Fehler bitte im Wortlaut notieren (Chatzeilen, Lua-Fehler mit Dateiname und Zeile). Für den Sync braucht es beide Clients in einer Gruppe. Auf beiden Chars das Addon installieren (Ordner `BananaFarm`) und `/reload`.
 
@@ -19,7 +19,7 @@ Fehler bitte im Wortlaut notieren (Chatzeilen, Lua-Fehler mit Dateiname und Zeil
 - [ ] Zonenwechsel (Instanz betreten/verlassen): kein Sprung beim Wert?
 
 ## Resets
-- [ ] Instanz zurücksetzen: Chatzeile "Reset gezählt: 1/5"? Zähler und Timer in der Leiste?
+- [ ] Nur der Farmchar online, kein Twink: Instanz zurücksetzen, zählt und zeigt die Leiste den Reset? Chatzeile "Reset gezählt: 1/5"? Zähler und Timer in der Leiste?
 - [ ] Mehrere Resets: Zähler steigt, bei 5/5 rot.
 - [ ] Relog: Zähler und Timer laufen weiter?
 - [ ] Wenn nichts gezählt wird: genauen Wortlaut der System-Chatzeile beim Reset notieren.
@@ -32,7 +32,13 @@ Fehler bitte im Wortlaut notieren (Chatzeilen, Lua-Fehler mit Dateiname und Zeil
 - [ ] Sieht das Fenster mit 5 Tabs und 5 Knöpfen je Zeile sauber aus (keine Überlappung)? Bitte Screenshot.
 
 ## Sync
-- [ ] Auf dem Bankalt in den Einstellungen "Sync-Partner" = Farmername eintragen. Auf dem Farmchar steht der Bankalt bereits (`/bf alt Name`).
+- [ ] Kopplung (0.4.0): Beide in einer Gruppe. Nur auf dem Farmchar den Twink eintragen (Einstellungen oder `/bf alt Name`). Kommt am Twink "Gekoppelt mit ..." und am Farmchar "hat die Kopplung bestätigt"? Muss am Twink nichts eingetragen werden?
+- [ ] Kopplung, Twink noch nicht in der Gruppe: Meldung am Farmchar, nach Gruppenbeitritt (ca. 5 s) koppeln sie sich selbst?
+- [ ] Nach der Kopplung: Kommen Listen, Preise und Resets einmal automatisch zum Twink?
+- [ ] AH-Scan am Twink mit Farmchar online in der Gruppe: Kommt vor dem Scan "hole die aktuellen Listen", beginnt der Scan danach (nach höchstens 8 s)? Nach dem Scan "Preise an ... geschickt", sind die Preise am Farmchar da?
+- [ ] AH-Scan ohne Partner in der Gruppe: startet sofort, ohne Wartezeit?
+- [ ] Neue Liste am Farmchar ändern, dann AH-Scan am Twink: ist die Änderung schon beim Scan berücksichtigt?
+- [ ] `/bf sync` und Einstellungen: Die Zeile "Sync-Partner" ist weg, `/bf alt` heißt jetzt Twink (Bankalt).
 - [ ] Beide in einer Gruppe: `/bf sync` auf einem Char. Kommt "Sync mit ...: x Listeneinträge, y Preise, z Resets übernommen"?
 - [ ] Bankalt scannt das AH (`/bf scan`), danach `/bf sync` auf dem Farmchar: sind die Preise da, wechseln Items zwischen Vendor und Mail?
 - [ ] Eine Liste auf dem Farmchar ändern, ausloggen (`/camp`), auf dem Bankalt prüfen: ist die Änderung angekommen?
@@ -55,3 +61,70 @@ Fehler bitte im Wortlaut notieren (Chatzeilen, Lua-Fehler mit Dateiname und Zeil
 - [ ] Erscheint "Pulls" in der Leiste? Passt die Zahl zu den gezogenen Mobs?
 - [ ] Jäger: Anzeige `n/80`, zählen Leichen mit, kommt die Warnung an der Grenze?
 - [ ] Anderer Char: nur die Zahl der Mobs im Kampf, fällt nach dem Kampf auf 0?
+
+## Module, Einrichtung, Icon, Keybind (neu in 0.4.0)
+- [ ] Nach `/reload` erscheint das Einrichtungsfenster mit Logo und 7 Schaltern, alle an. Fertig und Escape schließen es, danach kommt es nicht wieder.
+- [ ] Logo oben links im Hauptfenster sichtbar, Hintergrund transparent? Bitte Screenshot von Hauptfenster und Einrichtungsfenster.
+- [ ] Hauptfenster: Reiter Listen, Einstellungen, Module sauber, Session-Zeile in der Titelzeile überdeckt nichts?
+- [ ] Modul Item-Erkennung aus: Reiter Listen weg, kein Pop-up, kein AH-Scan, Session zählt nur Gold. Vendor und Mail zeigen aus.
+- [ ] Modul Vendor aus: kein Auto-Verkauf beim Händler, Rechtsklick-Verkauf von Hand geht in der Session. Modul Mail aus: keine Nachfrage am Briefkasten.
+- [ ] Modul Resets aus: Leiste ohne Resets, Reset wird nicht gezählt. Modul Pulls aus: keine Pull-Anzeige.
+- [ ] Modul Sync aus: `/bf sync` meldet das ausgeschaltete Modul.
+- [ ] Modul Tracking aus: Leiste weg. Keybind unter Optionen, Tastenbelegung, BananaFarm belegen: blendet die Leiste ein und aus?
+
+## Entzaubern in der Goldstatistik (neu in 0.4.0)
+- [ ] Session läuft, ein Item mit Wert finden (Run/Session steigen), dann entzaubern: Sinkt der Wert um den Itemwert, sobald das Item weg ist?
+- [ ] Die Mats aus dem Loot-Fenster: Steigt der Wert um den AH-Preis der Mats (nach AH-Scan), ohne AH-Preis um den Händlerwert?
+- [ ] Mit Autoloot und mit manuellem Looten testen. Bleibt der Wert in beiden Fällen richtig?
+- [ ] Entzaubern abbrechen (Bewegen): bleibt der Wert unverändert, das Item in der Tasche?
+- [ ] Item aus der Tasche entzaubern, das schon vor der Session da war: Wert sinkt nicht, nur die Mats kommen dazu?
+- [ ] Wenn nichts abgezogen wird: Meldet das Spiel den Zauber als `SPELLCAST_START`? (Name des Zaubers im Chat-Log notieren, `/bf probe` hilft nicht dafür.)
+
+## Mehrere Mailziele (neu in 0.4.0)
+- [ ] Einstellungen: Zeile "Mailziele" mit z. B. `Bankone, Banktwo` füllen. Meldung im Chat, Feld zeigt die Namen sauber an?
+- [ ] Reiter Listen, Mailliste: Spalte heißt "Ziel", jede Zeile zeigt ein Ziel? Linksklick schaltet vor, Rechtsklick zurück? Bitte Screenshot (Platz, Überlappung mit dem Itemnamen).
+- [ ] Briefkasten öffnen: Die Nachfrage nennt alle Ziele und die Briefzahl. Gehen die Items an das jeweils zugeordnete Ziel (Briefe bei den Bankchars prüfen)?
+- [ ] Mit TurtleMail und mehreren Items je Ziel: Alles angekommen, jeweils beim richtigen Char?
+- [ ] Ohne eigene Ziele: Post geht wie bisher an den Twink. Zeile leeren, Meldung "Keine eigenen Mailziele mehr"?
+- [ ] Ziel gleich dem eigenen Charakter: Items bleiben liegen, Meldung kommt?
+
+## Leiste, Pull-Zähler, Speedrun (neu in 0.4.0)
+- [ ] Leiste: Werden Run, Session und g/h jetzt vollständig angezeigt (auch mit Gold, Silber und Kupfer)? Bitte Screenshot mit allen drei Zeilen.
+- [ ] Pull-Zähler: Außerhalb des Kampfes ist keine Pull-Anzeige da? Läuft sie im Kampf nur bei Mobs, die an dir oder dem Pet hängen, und nicht durch Kämpfe anderer Spieler in der Nähe?
+- [ ] Pull-Zähler im Hunter-Modus: Zählen Leichen im Kampf weiter, und ist nach dem Kampf alles weg?
+- [ ] Rundenstoppuhr: Start, Stopp (Chatzeile mit der Rundenzeit), Weiterlaufen, Reset. Läuft sie unabhängig von der Session-Uhr?
+- [ ] Rundenstoppuhr bei `/reload`: Läuft sie weiter? Beim Ausloggen und Einloggen: Ist die Runde gespeichert und die Uhr auf 0?
+- [ ] Reiter Speedrun: Zeigt er Statistik, Sessions und Runden ohne Überlappung? Bitte Screenshot.
+- [ ] Block: Session mit 5 Resets, danach ausloggen. Steht die Session-Zeit in der Spalte Block? Wird sie nach erneutem Login und Logout ohne weiteren Reset aktualisiert?
+- [ ] Posten: Kanal wechseln, letzte Runde, Beste und Block posten. Kommen die Zeilen im richtigen Kanal an? Meldung, wenn der Kanal nicht geht?
+- [ ] Modul Speedrun ausschalten: Stoppuhr-Zeile, Reiter und Leiste schrumpfen auf zwei Zeilen?
+
+## Wunschliste (neu in 0.4.0)
+- [ ] Reiter Wünsche: Eingabefeld anklicken, dann Item per Shift-Klick aus der Tasche einfügen. Kommt es in die Liste? Dasselbe mit einem Chat-Link und mit AtlasLoot.
+- [ ] Wenn Shift-Klick nicht klappt: `/bf wish` tippen, dann ein Item per Shift-Klick in den Chat einfügen und Enter. Klappt das?
+- [ ] Nach dem Schließen des Feldes: Funktioniert das normale Chat-Fenster und Shift-Klick auf Items danach wieder wie vorher?
+- [ ] Mob hinzufügen: Name genau wie im Spiel und Droprate je Mob eintragen (z. B. 1,5 und 0,8). Zählen die Kills je Mob live hoch? Stimmen Chance, schnellster Mob und Kills bis 90 % und 50 %? Entfernen per X und per leerem Namensfeld?
+- [ ] Pull-Modul aus, Wunschliste an: Zählen die Kills trotzdem (mit SuperWoW)?
+- [ ] Mehrfachkills (Multi-Shot, Pet): Wird jeder tote Mob aus deiner Pull-Zählung einmal gezählt, und bei dem Mob mit dem richtigen Namen?
+- [ ] Item droppt: Chatzeile "Wunschitem erhalten", alle Mob-Kills auf 0, Anzahl erhalten und letzte Kills stehen da?
+- [ ] Mehr als 5 Einträge: Blättert das Mausrad? Entfernen und Kills zurücksetzen gehen?
+- [ ] Tabs: Passen alle fünf Reiter ins Fenster, ohne die Session-Zeile zu überdecken? Bitte Screenshot.
+
+## Rückmeldungen und Ergänzungen (neu in 0.4.0)
+- [ ] Leiste: Ist sie jetzt kompakter und passt sich der Textbreite an (auch mit Gold, Silber, Kupfer und laufender Stoppuhr)? Flackert die Breite? Bitte Screenshot.
+- [ ] Hauptfenster: Kein Start-Knopf mehr, die Reiter sind frei, die Session-Zeile überdeckt den Untertitel nicht, die Versionsnummer sitzt unter dem X?
+- [ ] Speedrun: Das X bei einer Runde und bei einer beendeten Session löscht sie? Beste Zeit und Leiste ändern sich mit? Die laufende Session hat kein X?
+- [ ] Wunschliste: Der Spaltenkopf "Rate %" bricht nicht mehr um?
+- [ ] Zuordnungs-Pop-up mit mindestens zwei Mailzielen: Der Mail-Knopf öffnet die Auswahl, ein Klick ordnet Item und Ziel zu (Mailliste zeigt das Ziel)? Mit nur einem Ziel wird gleich zugeordnet?
+- [ ] AH-Scan: Zuerst die Items ohne Preis, dann Meldung "Neue Items fertig" mit Abgleich der Preise, danach die übrigen und am Ende wieder ein Abgleich (Twink in der Gruppe)? Werden unsortierte Items nach Phase 1 sofort einsortiert?
+- [ ] Erste Einrichtung (bei einer neuen Datenbank oder nach Löschen von `setupDone`): Modulfenster, danach Pop-up Twink, danach Pop-up Mailchars? Bleiben die Felder in den Einstellungen leer, wenn du nichts einträgst oder überspringst? Greift ein eingetragener Twink (Kopplung) und stehen die Mailchars in den Einstellungen?
+
+## Korrekturen nach den Screenshots vom 17.11. (neu in 0.4.0)
+- [ ] Leiste: Hat die oberste Zeile jetzt oben so viel Abstand zum Rahmen wie die unterste nach unten?
+- [ ] Speedrun: Das X bei einer Runde und bei einer beendeten Session löscht jetzt wirklich (Lua-5.0-Fehler behoben)? Auch bei mehreren Zeilen die richtige?
+- [ ] Wunschliste: Mob hinzufügen, Name und Rate in die richtige Zeile eintragen, X entfernt die richtige Zeile (derselbe Fehler stand dort)?
+- [ ] Zuordnungs-Pop-up mit mehreren Mailzielen: Ein Klick auf das zweite oder dritte Ziel ordnet genau dieses zu?
+- [ ] Twink: Gibt es in der Leiste den Knopf "Inst. Reset", und fehlt er auf dem Farmchar? Setzt er die Instanzen zurück (als Gruppenleiter)? Passt die Leiste in der Breite?
+- [ ] Twink resettet, Farmchar außerhalb der Instanz: Erscheint der Reset sofort beim Farmchar ("Reset durch den Partner", Resets 1/5, neuer Run), ohne `/bf sync`?
+- [ ] Beide bekommen die Reset-Meldung des Spiels: Wird der Reset nicht doppelt gezählt?
+- [ ] Gebietswechsel und Instanz betreten oder verlassen: Läuft danach ein Abgleich (Chatzeile nur, wenn sich etwas geändert hat)?

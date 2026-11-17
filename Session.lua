@@ -74,12 +74,15 @@ end
 function Session:Start()
   local db = BananaFarmDB
   if db.session.running then return end
-  db.session = { running = true, t0 = time(), elapsed = 0, items = {}, coin = 0, resets = 0,
+  if BF.Speedrun and BF:Enabled("speedrun") then BF.Speedrun:ArchiveSession(db.session) end
+  db.session = { running = true, t0 = time(), date = time(), elapsed = 0, items = {}, coin = 0, resets = 0,
     run = { items = {}, coin = 0, start = 0 } }
   self.snap = BF.BagCounts()
   self.warned = nil
   -- was schon in den Taschen liegt, gleich einsortieren (zaehlt nicht als Beute)
-  for id in pairs(self.snap) do BF.Lists:Seen(id) end
+  if BF:Enabled("items") then
+    for id in pairs(self.snap) do BF.Lists:Seen(id) end
+  end
   BF:Print(BF.T("MSG_SESSION_START"))
   if BF.UI then BF.UI:Refresh() end
 end
@@ -107,8 +110,15 @@ function Session:Elapsed()
 end
 
 -- Wert eines Items fuer den Tracker: was auf der Mailliste steht, zaehlt mit dem AH-Preis,
--- alles andere mit dem Haendlerwert.
+-- alles andere mit dem Haendlerwert. Verzauberungsmaterial (siehe Entzaubern unten) zaehlt mit
+-- dem AH-Preis, falls vorhanden, sonst mit dem Haendlerwert, egal auf welcher Liste es steht.
 function Session:ItemValue(id)
+  local mats = BananaFarmDB.session.mats
+  if mats and mats[id] then
+    local ah = BF:AHNet(id)
+    if ah then return ah end
+    return BF:VendorValue(id) or 0
+  end
   if BF.Lists:Eff(id) == "M" then
     local ah = BF:AHNet(id)
     if ah then return ah end
@@ -133,18 +143,103 @@ function Session:PerHour()
   return floor(self:Value() / e * 3600)
 end
 
+-- ------------------------------------------------------------
+-- Entzaubern: Das entzauberte Item verschwindet aus der Statistik (sein Wert wird abgezogen),
+-- die Mats aus dem Loot-Fenster danach zaehlen mit AH-Preis oder Haendlerwert.
+-- Ablauf: SPELLCAST_START (Entzaubern) -> SPELLCAST_STOP -> Item faellt aus der Tasche ->
+-- LOOT_OPENED/LOOT_CLOSED -> Mats kommen in die Tasche.
+-- ------------------------------------------------------------
+local DE_SPELLS = { ["disenchant"] = true, ["entzaubern"] = true, ["désenchanter"] = true, ["desencantar"] = true }
+
+-- Item kann gerade durch das Entzaubern verschwinden (Zauber laeuft oder ist eben fertig)
+function Session:DeItemWindow()
+  local d = self.de
+  if not d then return false end
+  if d.cast then return true end
+  return d.stopAt ~= nil and GetTime() - d.stopAt <= 5
+end
+
+-- Items, die jetzt neu in die Tasche kommen, sind Mats des Entzauberns
+function Session:DeMatWindow()
+  local d = self.de
+  if not d then return false end
+  if d.looting then return true end
+  return d.lootEnd ~= nil and GetTime() - d.lootEnd <= 3
+end
+
+BF:On("SPELLCAST_START", function(name)
+  if type(name) == "string" and DE_SPELLS[string.lower(name)] then
+    Session.de = { cast = true }
+  end
+end)
+
+BF:On("SPELLCAST_STOP", function()
+  local d = Session.de
+  if d and d.cast then
+    d.cast = false
+    d.stopAt = GetTime()
+  end
+end)
+
+BF:On("SPELLCAST_INTERRUPTED", function() Session.de = nil end)
+
+BF:On("LOOT_OPENED", function()
+  local d = Session.de
+  if d and d.stopAt and GetTime() - d.stopAt <= 30 then d.looting = true end
+end)
+
+BF:On("LOOT_CLOSED", function()
+  local d = Session.de
+  if d and d.looting then
+    d.looting = false
+    d.lootEnd = GetTime()
+  end
+end)
+
+-- zieht hoechstens ab, was die Statistik von diesem Item kennt
+local function uncount(t, id, lost)
+  local have = t and t[id] or 0
+  if have <= 0 then return end
+  have = have - lost
+  if have > 0 then t[id] = have else t[id] = nil end
+end
+
 -- Taschen haben sich geaendert: Differenz zum Snapshot auswerten
 function Session:OnBags()
   local now = BF.BagCounts()
   local s = BananaFarmDB.session
   if self.settling then return end
   if s.running and self.snap and not BF.Busy() then
-    for id, c in pairs(now) do
-      local d = c - (self.snap[id] or 0)
-      if d > 0 then
-        s.items[id] = (s.items[id] or 0) + d
-        s.run.items[id] = (s.run.items[id] or 0) + d
-        BF.Lists:Seen(id)
+    if BF:Enabled("items") then
+      local deItem = self:DeItemWindow()
+      local deMat = self:DeMatWindow()
+      for id, c in pairs(now) do
+        local d = c - (self.snap[id] or 0)
+        if d > 0 then
+          s.items[id] = (s.items[id] or 0) + d
+          s.run.items[id] = (s.run.items[id] or 0) + d
+          if deMat then
+            s.mats = s.mats or {}
+            s.mats[id] = true
+          end
+          BF.Lists:Seen(id)
+        end
+      end
+      -- entzaubert: der Itemwert faellt aus der Statistik
+      if deItem then
+        for id, c in pairs(self.snap) do
+          local lost = c - (now[id] or 0)
+          if lost > 0 then
+            uncount(s.items, id, lost)
+            uncount(s.run.items, id, lost)
+          end
+        end
+      end
+      -- Zustand aufraeumen, wenn nichts mehr zu erwarten ist
+      local de = self.de
+      if de and not de.cast and not de.looting then
+        local last = de.lootEnd or de.stopAt
+        if last and GetTime() - last > 40 then self.de = nil end
       end
     end
     local warn = BananaFarmDB.bagWarn or 0

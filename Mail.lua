@@ -12,6 +12,121 @@ BF.POSTAGE = 30 -- Kupfer pro Anhang
 BF.TM_MAX = 21 -- so viele Anhaenge fasst das TurtleMail-Sendefenster
 BF.TM_BATCH = 1 -- Briefe je TurtleMail-Durchgang: bei mehreren in Folge scheiterte ab dem 2. Brief der Versand
 
+-- ------------------------------------------------------------
+-- Mailziele: weitere Ziele (db.mailTargets, Reihenfolge = Rang, das erste ist das Standardziel)
+-- und die Zuordnung je Item (db.mailTarget[id] = Name). Beides wird nicht gesynct.
+-- Ohne eigene Ziele geht alles an den Twink (Bankalt), also den Sync-Partner.
+-- ------------------------------------------------------------
+function Mail:Default()
+  local db = BananaFarmDB
+  local t = db.mailTargets
+  if t and t[1] then return t[1] end
+  if db.bankAlt and db.bankAlt ~= "" then return db.bankAlt end
+  return nil
+end
+
+-- Name des Ziels aus der Liste (in der gespeicherten Schreibweise) oder nil
+function Mail:IsTarget(name)
+  local t = BananaFarmDB.mailTargets
+  if not name or not t then return nil end
+  local low = string.lower(name)
+  for i = 1, getn(t) do
+    if string.lower(t[i]) == low then return t[i] end
+  end
+  return nil
+end
+
+-- Ziel eines Items: das zugeordnete (falls es noch in der Liste steht), sonst das Standardziel
+function Mail:TargetOf(id)
+  return self:IsTarget(BananaFarmDB.mailTarget[id]) or self:Default()
+end
+
+-- Ziel eines Items ein Stueck weiterschalten (dir = 1 vor, -1 zurueck)
+function Mail:CycleTarget(id, dir)
+  local t = BananaFarmDB.mailTargets
+  local n = getn(t)
+  if n == 0 then return end
+  local cur = string.lower(self:TargetOf(id) or "")
+  local idx = 0
+  for i = 1, n do
+    if string.lower(t[i]) == cur then idx = i end
+  end
+  idx = idx + (dir or 1)
+  if idx > n then idx = 1 elseif idx < 1 then idx = n end
+  BananaFarmDB.mailTarget[id] = t[idx]
+end
+
+-- Mailziele aus einem Text uebernehmen (Namen mit Komma). Leer = keine eigenen Ziele.
+function Mail:SetTargets(v)
+  local list, seen = {}, {}
+  for name in string.gfind(v or "", "[^,;%s]+") do
+    local k = string.lower(name)
+    if not seen[k] then
+      seen[k] = true
+      table.insert(list, name)
+    end
+  end
+  BananaFarmDB.mailTargets = list
+  if getn(list) == 0 then
+    BF:Print(BF.T("MSG_MAIL_TARGETS_CLEARED"))
+  else
+    BF:Print(string.format(BF.T("MSG_MAIL_TARGETS"), table.concat(list, ", "), list[1]))
+  end
+  if BF.UI then BF.UI:Refresh() end
+end
+
+-- Namen der Ziele einer Liste, ohne Doppelte, in der Reihenfolge des Auftretens
+function Mail:NamesOf(list)
+  local seen, out = {}, {}
+  for i = 1, getn(list) do
+    local k = string.lower(list[i].to)
+    if not seen[k] then
+      seen[k] = true
+      table.insert(out, list[i].to)
+    end
+  end
+  return table.concat(out, ", ")
+end
+
+-- Zahl der Briefe, je Ziel gruppiert
+function Mail:Letters(list)
+  local per, order = {}, {}
+  for i = 1, getn(list) do
+    local k = string.lower(list[i].to)
+    if not per[k] then
+      per[k] = 0
+      table.insert(order, k)
+    end
+    per[k] = per[k] + 1
+  end
+  local n = 0
+  for i = 1, getn(order) do
+    if self:TurtleMailActive() then
+      n = n + per[order[i]]
+    else
+      n = n + math.ceil(per[order[i]] / self:Slots())
+    end
+  end
+  return n
+end
+
+-- merkt, an wen tatsaechlich Briefe durchgingen (fuer die Abschlussmeldung)
+function Mail:Tally(r)
+  if not r.to then return end
+  local k = string.lower(r.to)
+  if not r.tally[k] then
+    r.tally[k] = r.to
+    table.insert(r.order, k)
+  end
+end
+
+function Mail:TallyText(r)
+  local out = {}
+  for i = 1, getn(r.order) do table.insert(out, r.tally[r.order[i]]) end
+  if getn(out) == 0 then return r.to or "?" end
+  return table.concat(out, ", ")
+end
+
 -- Wie viele Anhaenge nimmt dieser Client? Vanilla kann einen, OctoWoW mehrere.
 function Mail:Slots()
   if self.slots then return self.slots end
@@ -47,38 +162,65 @@ local function mailHasAttachment(index)
 end
 
 -- Stapel der Mailliste in den Taschen. Seelengebundenes laesst sich nicht verschicken und bleibt liegen.
+-- Liefert die Stapel, je Ziel zusammenhaengend (Ziele in der Reihenfolge ihres ersten Auftretens),
+-- dazu die Zahl der Stapel, die an diesen Charakter selbst gehen wuerden (bleiben liegen),
+-- und die Zahl der Stapel ohne jedes Ziel.
 function Mail:Collect()
-  local list = {}
+  local list, self_, none = {}, 0, 0
+  local me = string.lower(UnitName("player") or "")
   BF.EachBagItem(function(bag, slot, id, count, locked)
     if not locked and BF.Lists:Eff(id) == "M" and not BF.IsSoulbound(bag, slot) then
-      table.insert(list, { bag = bag, slot = slot, id = id, c = count })
+      local to = Mail:TargetOf(id)
+      if not to then
+        none = none + 1
+      elseif string.lower(to) == me then
+        self_ = self_ + 1
+      else
+        table.insert(list, { bag = bag, slot = slot, id = id, c = count, to = to })
+      end
     end
   end)
-  return list
+  local groups, order = {}, {}
+  for i = 1, getn(list) do
+    local k = string.lower(list[i].to)
+    if not groups[k] then
+      groups[k] = {}
+      table.insert(order, k)
+    end
+    table.insert(groups[k], list[i])
+  end
+  local sorted = {}
+  for i = 1, getn(order) do
+    local g = groups[order[i]]
+    for j = 1, getn(g) do table.insert(sorted, g[j]) end
+  end
+  return sorted, self_, none
 end
 
 function Mail:Start()
   if self.run then return end
+  if not BF:Enabled("mail") then
+    BF:Print(BF.T("ERR_MODULE_OFF"))
+    return
+  end
   local db = BananaFarmDB
   if not BF.mailOpen then
     BF:Print(BF.T("ERR_NO_MAILBOX"))
     return
   end
-  if db.bankAlt == "" then
-    BF:Print(BF.T("ERR_NO_ALT"))
-    return
-  end
-  if string.lower(db.bankAlt) == string.lower(UnitName("player") or "") then
-    BF:Print(BF.T("ERR_ALT_SELF"))
-    return
-  end
-  local list = self:Collect()
+  local list, mine, none = self:Collect()
   if getn(list) == 0 then
-    BF:Print(BF.T("MSG_MAIL_NOTHING"))
+    if none > 0 then
+      BF:Print(BF.T("ERR_NO_ALT"))
+    elseif mine > 0 then
+      BF:Print(BF.T("ERR_ALT_SELF"))
+    else
+      BF:Print(BF.T("MSG_MAIL_NOTHING"))
+    end
     return
   end
-  self.run = { list = list, idx = 1, stacks = 0, mails = 0, to = db.bankAlt }
-  BF:Print(string.format(BF.T("MSG_MAIL_START"), getn(list), db.bankAlt))
+  self.run = { list = list, idx = 1, stacks = 0, mails = 0, to = list[1].to, tally = {}, order = {} }
+  BF:Print(string.format(BF.T("MSG_MAIL_START"), getn(list), self:NamesOf(list)))
   self:Next()
 end
 
@@ -92,7 +234,7 @@ function Mail:Stop(errKey)
   if CursorHasItem() then ClearCursor() end
   if errKey then BF:Error(BF.T(errKey)) end
   if r.mails > 0 then
-    BF:Print(string.format(BF.T("MSG_MAIL_DONE"), r.stacks, r.mails, r.to))
+    BF:Print(string.format(BF.T("MSG_MAIL_DONE"), r.stacks, r.mails, self:TallyText(r)))
   end
   if BF.UI then BF.UI:Refresh() end
 end
@@ -102,6 +244,7 @@ function Mail:Next()
   if not r then return end
   if not BF.mailOpen then return self:Stop("ERR_MAIL_CLOSED") end
   if not r.list[r.idx] then return self:Stop() end
+  r.to = r.list[r.idx].to
   if GetMoney() < BF.POSTAGE then return self:Stop("ERR_NO_POSTAGE") end
   -- Schritt 1: auf den Reiter Senden wechseln. Der Client nimmt einen Anhang
   -- erst an, wenn dieser Reiter offen ist, und braucht dafuer einen Moment.
@@ -126,6 +269,7 @@ function Mail:TurtleAttach()
   local k = r.idx
   while r.list[k] and getn(batch) < max do
     local e = r.list[k]
+    if getn(batch) == 0 then r.to = e.to elseif e.to ~= r.to then break end
     local id = BF.ItemID(GetContainerItemLink(e.bag, e.slot))
     if id == e.id then
       pcall(TurtleMail.sendmail_set_attachment, { e.bag, e.slot })
@@ -219,6 +363,7 @@ function Mail:Step2()
   local k = r.idx
   while r.list[k] and getn(batch) < slots do
     local e = r.list[k]
+    if getn(batch) == 0 then r.to = e.to elseif e.to ~= r.to then break end
     -- der Platz muss noch denselben Stapel halten (Taschen koennen sich geaendert haben)
     local id = BF.ItemID(GetContainerItemLink(e.bag, e.slot))
     if id ~= e.id then
@@ -353,6 +498,7 @@ BF:On("MAIL_SEND_SUCCESS", function()
     r.sending = false
     BF:Cancel("mailtimeout")
     r.stacks = r.stacks + n
+    Mail:Tally(r)
     r.batch = nil
     r.got = 0
     BF:After(1.0, function() Mail:Next() end, "mailstep")
@@ -362,6 +508,7 @@ BF:On("MAIL_SEND_SUCCESS", function()
   BF:Cancel("mailtimeout")
   r.mails = r.mails + 1
   r.stacks = r.stacks + getn(r.batch or {})
+  Mail:Tally(r)
   r.batch = nil
   -- dem Server einen Moment lassen, sonst lehnt er den naechsten Brief ab
   BF:After(1.0, function() Mail:Next() end, "mailstep")
@@ -380,18 +527,14 @@ end)
 -- Nie direkt im Ereignis pruefen: Post-Addons loesen beim Oeffnen viele Updates aus.
 BF:On("MAIL_SHOW", function()
   BF:After(0.5, function()
-    if not BF.mailOpen or Mail.run or not BananaFarmDB.mailAsk then return end
-    local list = Mail:Collect()
+    if not BF.mailOpen or Mail.run or not BananaFarmDB.mailAsk or not BF:Enabled("mail") then return end
+    local list, mine, none = Mail:Collect()
     local n = getn(list)
-    if n == 0 then return end
-    local db = BananaFarmDB
-    if db.bankAlt == "" then
-      BF:Print(BF.T("ERR_NO_ALT"))
+    if n == 0 then
+      if none > 0 then BF:Print(BF.T("ERR_NO_ALT")) end
       return
     end
-    local letters = math.ceil(n / Mail:Slots())
-    if Mail:TurtleMailActive() then letters = n end
-    BF.UI:Confirm("mail", string.format(BF.T("ASK_MAIL"), n, db.bankAlt, letters, BF.Money(n * BF.POSTAGE)),
+    BF.UI:Confirm("mail", string.format(BF.T("ASK_MAIL"), n, Mail:NamesOf(list), Mail:Letters(list), BF.Money(n * BF.POSTAGE)),
       function() Mail:Start() end)
   end, "mailask")
 end)

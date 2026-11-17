@@ -9,7 +9,8 @@
 BananaFarm = {}
 local BF = BananaFarm
 
-BF.VERSION = "0.3.0"
+BF.VERSION = "0.4.0"
+BF.ICON = "Interface\\AddOns\\BananaFarm\\Icon"
 
 local getn = table.getn
 local floor = math.floor
@@ -236,6 +237,30 @@ function BF.Busy()
 end
 
 -- ------------------------------------------------------------
+-- Module: einzeln ein- und ausschaltbar. Ein ausgeschaltetes Modul bleibt stumm
+-- (keine Fenster, keine Abfragen, keine Hooks mit Wirkung). vendor und mail brauchen items.
+-- ------------------------------------------------------------
+BF.MODULES = { "tracking", "items", "vendor", "mail", "resets", "pulls", "speedrun", "wish", "sync" }
+BF.MODULE_NEEDS = { vendor = "items", mail = "items" }
+
+function BF:Enabled(name)
+  local m = BananaFarmDB and BananaFarmDB.modules
+  if not m then return true end
+  if m[name] == false then return false end
+  local need = BF.MODULE_NEEDS[name]
+  if need and m[need] == false then return false end
+  return true
+end
+
+-- Wer ein Modul einschaltet, das ein anderes braucht, schaltet dieses mit ein
+function BF:SetModule(name, on)
+  local m = BananaFarmDB.modules
+  m[name] = on and true or false
+  local need = BF.MODULE_NEEDS[name]
+  if on and need then m[need] = true end
+end
+
+-- ------------------------------------------------------------
 -- Datenbank
 -- ------------------------------------------------------------
 BF.DEFAULTS = {
@@ -257,6 +282,7 @@ BF.DEFAULTS = {
   keepProtect = true,  -- Liste "Behalten" schuetzt nur waehrend einer laufenden Session
   autoSync = true,     -- bei Login und vor dem Logout mit dem Partner abgleichen
   syncPeer = "",       -- Sync-Partner (leer: Bankalt)
+  srChannel = "PARTY", -- Speedrun: Kanal fuers Posten (PARTY, RAID, GUILD, SAY)
 }
 
 function BF:InitDB()
@@ -280,6 +306,17 @@ function BF:InitDB()
   for id in pairs(db.manual) do
     if not db.manualTs[id] then db.manualTs[id] = 1 end
   end
+  db.modules = db.modules or {}   -- [Modulname] = true/false (siehe BF.MODULES)
+  for i = 1, getn(BF.MODULES) do
+    if db.modules[BF.MODULES[i]] == nil then db.modules[BF.MODULES[i]] = true end
+  end
+  db.mailTargets = db.mailTargets or {} -- weitere Mailziele (Namen), das erste ist das Standardziel
+  db.mailTarget = db.mailTarget or {}   -- [id] = Name des Mailziels (wird nicht gesynct)
+  db.wish = db.wish or {}   -- Wunschliste: { id, mobs = { { name, rate (Prozent), kills } }, got, last }
+  db.speedrun = db.speedrun or {}
+  db.speedrun.laps = db.speedrun.laps or {}         -- { t = Sekunden, at = Zeitpunkt, cyc = Uhr-Durchlauf }
+  db.speedrun.sessions = db.speedrun.sessions or {} -- beendete Sessions: { at, elapsed, resets, out }
+  db.speedrun.sw = db.speedrun.sw or { elapsed = 0, cycle = 1 } -- Rundenstoppuhr
   db.pos = db.pos or {}
   db.hunter = db.hunter or {}     -- [Charname] = true/false: Hunter-Modus von Hand
   db.session = db.session or { running = false, elapsed = 0, items = {}, coin = 0, resets = 0,
@@ -361,6 +398,8 @@ BF:On("VARIABLES_LOADED", function()
   BF.money = GetMoney()
   if BF.UI then BF.UI:Init() end
   if BF.Session then BF.Session:OnLoad() end
+  if BF.Speedrun then BF.Speedrun:OnLoad() end
+  if BF.Wish then BF.Wish:Migrate() end
   BF.Vendor:HookUse()
   BF.Pulls:Init()
   BF:Print(string.format(BF.T("MSG_LOADED"), BF.VERSION))
@@ -408,8 +447,7 @@ SlashCmdList["BANANAFARM"] = function(msg)
   elseif cmd == "alt" then
     BF:SetBankAlt(rest)
   elseif cmd == "bar" then
-    BananaFarmDB.bar = not BananaFarmDB.bar
-    BF.UI:Refresh()
+    BF.UI:ToggleBar()
   elseif cmd == "mail" then
     BF.Mail:Start()
   elseif cmd == "sell" then
@@ -418,8 +456,10 @@ SlashCmdList["BANANAFARM"] = function(msg)
     BF.Resets:Do()
   elseif cmd == "sync" then
     BF.Sync:Command(rest)
+  elseif cmd == "wish" then
+    BF.Wish:Command(rest)
   else
-    for i = 1, 11 do BF:Print(BF.T("HELP_" .. i)) end
+    for i = 1, 12 do BF:Print(BF.T("HELP_" .. i)) end
   end
 end
 
@@ -427,10 +467,13 @@ function BF:SetBankAlt(name)
   name = BF.Trim(name)
   name = string.gsub(name, "%s", "")
   BananaFarmDB.bankAlt = name
+  -- wer einen Twink einträgt, ist der Farmmain und hat selbst keinen Partner
+  if name ~= "" then BananaFarmDB.syncPeer = "" end
   if name == "" then
     self:Print(self.T("MSG_ALT_CLEARED"))
   else
     self:Print(string.format(self.T("MSG_ALT_SET"), name))
   end
   if self.UI then self.UI:Refresh() end
+  if name ~= "" and self.Sync then self.Sync:Start("pair") end
 end

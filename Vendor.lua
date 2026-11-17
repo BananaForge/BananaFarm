@@ -22,6 +22,10 @@ end
 
 function Vendor:Start()
   if self.run then return end
+  if not BF:Enabled("vendor") then
+    BF:Print(BF.T("ERR_MODULE_OFF"))
+    return
+  end
   if not BF.merchantOpen then
     BF:Print(BF.T("ERR_NO_MERCHANT"))
     return
@@ -111,7 +115,7 @@ function Vendor:HookUse()
   origUse = UseContainerItem
   UseContainerItem = function(bag, slot, a3)
     if BF.ready and BF.merchantOpen and not Vendor.selling and BananaFarmDB.protect
-      and BF.Session:Running() and not IsAltKeyDown() then
+      and BF:Enabled("vendor") and BF.Session:Running() and not IsAltKeyDown() then
       local id = BF.ItemID(GetContainerItemLink(bag, slot))
       if id and BF.Lists:Eff(id) ~= "V" then
         local now = GetTime()
@@ -127,7 +131,7 @@ function Vendor:HookUse()
 end
 
 BF:On("MERCHANT_SHOW", function()
-  if not BananaFarmDB.autoSell then return end
+  if not BananaFarmDB.autoSell or not BF:Enabled("vendor") then return end
   BF:After(0.3, function() Vendor:Start() end, "vendorstart")
 end)
 

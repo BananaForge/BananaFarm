@@ -89,28 +89,48 @@ function BF:ScanTargets()
   for id in pairs(db.manual) do add(id) end
   for id in pairs(db.auto) do add(id) end
   for id in pairs(db.unsorted) do add(id) end
-  -- zuerst die Items ohne Preis, dann die mit dem aeltesten Scan
-  table.sort(ids, function(a, b)
-    local ta = db.ah[a] and db.ah[a].ts or 0
-    local tb = db.ah[b] and db.ah[b].ts or 0
+  -- Phase 1: Items, die noch nie gescannt wurden (kein Preis). Phase 2: die uebrigen, aeltester Scan zuerst.
+  local fresh, old = {}, {}
+  for i = 1, getn(ids) do
+    if db.ah[ids[i]] then table.insert(old, ids[i]) else table.insert(fresh, ids[i]) end
+  end
+  table.sort(fresh)
+  table.sort(old, function(a, b)
+    local ta = db.ah[a].ts or 0
+    local tb = db.ah[b].ts or 0
     if ta ~= tb then return ta < tb end
     return a < b
   end)
-  return ids
+  local out = {}
+  for i = 1, getn(fresh) do table.insert(out, fresh[i]) end
+  for i = 1, getn(old) do table.insert(out, old[i]) end
+  return out, getn(fresh)
 end
 
 function BF:StartAHScan()
+  if not self:Enabled("items") then
+    self:Print(self.T("ERR_MODULE_OFF"))
+    return
+  end
   if not self.ahOpen then
     self:Print(self.T("ERR_NO_AH"))
     return
   end
   if self.scan then return end
-  local ids = self:ScanTargets()
+  if self.Sync and self.Sync.prep then return end
+  -- erst die Listen mit dem Partner abgleichen (falls online), dann scannen
+  if self.Sync and self.Sync:PrepareScan(function() BF:BeginAHScan() end) then return end
+  self:BeginAHScan()
+end
+
+function BF:BeginAHScan()
+  if self.scan or not self.ahOpen then return end
+  local ids, n1 = self:ScanTargets()
   if getn(ids) == 0 then
     self:Print(self.T("MSG_AH_NOTHING"))
     return
   end
-  self.scan = { ids = ids, idx = 1, set = 0, none = 0, page = 0, hits = {}, started = GetTime() }
+  self.scan = { ids = ids, n1 = n1, idx = 1, set = 0, none = 0, page = 0, hits = {}, started = GetTime() }
   self:Print(string.format(self.T("MSG_AH_START"), getn(ids)))
   if self.UI then self.UI:Refresh() end
   self:AHQuery()
@@ -118,11 +138,13 @@ end
 
 function BF:StopAHScan(silent)
   if not self.scan then return end
+  local s = self.scan
   self.scan = nil
   self:Cancel("ahq")
   self:Cancel("ahtimeout")
   if not silent then self:Print(self.T("MSG_AH_ABORT")) end
   self.Lists:Reclassify()
+  if self.Sync and (s.set + s.none) > 0 then self.Sync:AfterScan() end
   if self.UI then self.UI:Refresh() end
 end
 
@@ -171,8 +193,19 @@ function BF:FinishTarget()
   if s.idx > getn(s.ids) then
     self:FinishAHScan()
   else
+    -- die neuen Items sind durch: Preise einsortieren und einmal abgleichen, dann die uebrigen
+    if s.n1 and s.n1 > 0 and s.idx == s.n1 + 1 then self:AHPhaseDone() end
     self:After(0.3, function() BF:AHQuery() end, "ahq")
   end
+end
+
+function BF:AHPhaseDone()
+  local s = self.scan
+  if not s then return end
+  self:Print(string.format(self.T("MSG_AH_PHASE"), s.n1, getn(s.ids) - s.n1))
+  local moved = self.Lists:Reclassify()
+  if moved > 0 then self:Print(string.format(self.T("MSG_RESORTED"), moved)) end
+  if self.Sync then self.Sync:AfterScan() end
 end
 
 BF:On("AUCTION_ITEM_LIST_UPDATE", function()
@@ -217,5 +250,6 @@ function BF:FinishAHScan()
   -- neue Preise koennen automatische Zuordnungen kippen und Unsortiertes einsortieren
   local moved = self.Lists:Reclassify()
   if moved > 0 then self:Print(string.format(self.T("MSG_RESORTED"), moved)) end
+  if self.Sync then self.Sync:AfterScan() end
   if self.UI then self.UI:Refresh() end
 end

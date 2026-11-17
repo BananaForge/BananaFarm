@@ -4,7 +4,7 @@
 ## Notes: Lasher farm helper for Dire Maul East: auto-sell, auto-mail, session tracker.
 ## Notes-deDE: Lasher-Farmhilfe für Düsterbruch Ost: Auto-Verkauf, Auto-Post, Session-Tracker.
 ## Author: Luminar, Bareg (BananaForge)
-## Version: 0.3.0
+## Version: 0.4.0
 ## SavedVariables: BananaFarmDB
 
 Core.lua
@@ -17,6 +17,8 @@ Vendor.lua
 Session.lua
 Resets.lua
 Pulls.lua
+Speedrun.lua
+Wish.lua
 Sync.lua
 Probe.lua
 UI.lua
