@@ -6,6 +6,11 @@
 -- Gezaehlt werden nur Mobs, die mit mir oder meinem Pet im Kampf sind (eigene Zauber und Treffer,
 -- Angriffe auf mich oder das Pet, Ziel und Mouseover nur wenn der Mob auf mich oder das Pet geht).
 -- Kaempfe anderer Spieler in der Naehe zaehlen nicht. Ausserhalb des Kampfes bleibt die Anzeige weg.
+-- Zusaetzlich (0.4.1) die Namensplaketten: SuperWoW liefert dort mit GetName(1) die GUID. So zaehlen
+-- auch Mobs, die nur hinter dir herlaufen und noch nicht getroffen haben (wichtig beim Hunter-Kite).
+-- Voraussetzung: Namensplaketten an (Taste V). Gezaehlt wird ein Mob mit Plakette, der im Kampf ist
+-- und dich oder dein Pet im Ziel hat; kennt der Client "GUIDtarget" nicht, reicht in einer Instanz
+-- "im Kampf und angreifbar" (dort ist man allein).
 -- ACHTUNG: ohne Ergebnis von /bf probe gebaut, im Spiel noch nicht bestaetigt.
 
 local BF = BananaFarm
@@ -61,6 +66,45 @@ function Pulls:AddUnit(unit)
   if UnitIsUnit(unit .. "target", "player") or UnitIsUnit(unit .. "target", "pet") then self:Add(g) end
 end
 
+-- Zielt der Mob auf mich oder mein Pet? true/false, nil wenn der Client das fuer GUIDs nicht kann
+local function targetsMe(g)
+  local ok, me = pcall(UnitIsUnit, g .. "target", "player")
+  if not ok then return nil end
+  if me then return true end
+  local ok2, pet = pcall(UnitIsUnit, g .. "target", "pet")
+  return ok2 and pet and true or false
+end
+
+local function inInstance()
+  if not IsInInstance then return false end
+  local inside = IsInInstance()
+  return inside and true or false
+end
+
+-- Namensplaketten durchgehen (nur im Kampf, alle 0,5 s)
+function Pulls:ScanPlates()
+  if not WorldFrame or not WorldFrame.GetChildren then return end
+  local kids = { WorldFrame:GetChildren() }
+  local instance = nil
+  for i = 1, table.getn(kids) do
+    local f = kids[i]
+    if f and f.IsVisible and f:IsVisible() then
+      local ok, g = pcall(f.GetName, f, 1)
+      if ok and type(g) == "string" and string.sub(g, 1, 2) == "0x" and not self.set[g] then
+        local okc, combat = pcall(UnitAffectingCombat, g)
+        if okc and combat and hostileMob(g) then
+          local t = targetsMe(g)
+          if t == nil then
+            if instance == nil then instance = inInstance() end
+            t = instance
+          end
+          if t then self:Add(g) end
+        end
+      end
+    end
+  end
+end
+
 function Pulls:Sweep()
   if not self:Active() then
     self.set = {}
@@ -71,6 +115,7 @@ function Pulls:Sweep()
   local hunter = BF:HunterMode()
   local now = GetTime()
   local inCombat = UnitAffectingCombat("player")
+  if inCombat and self:Available() then self:ScanPlates() end
   local n = 0
   local drop
   for g, t in pairs(self.set) do

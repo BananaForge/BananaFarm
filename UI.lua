@@ -12,7 +12,7 @@ local UI = BF.UI
 local FONT = "Fonts\\FRIZQT__.TTF"
 local FONT_TITLE = "Fonts\\MORPHEUS.TTF"
 local WHITE = "Interface\\ChatFrame\\ChatFrameBackground"
-local ROWS = 18
+local ROWS = 17
 local ROW_H = 22
 
 UI.C = {
@@ -143,12 +143,39 @@ function UI:Button(parent, w, h, key, onClick, style)
       fs:SetTextColor(1, 0.95, 0.6)
       b:SetBackdropColor(0.40, 0.28, 0.05, 0.95)
     else
+      local c = b.bgColor or bg
       fs:SetTextColor(tc[1], tc[2], tc[3])
-      b:SetBackdropColor(bg[1], bg[2], bg[3], 0.95)
+      b:SetBackdropColor(c[1], c[2], c[3], 0.95)
     end
   end
   return b
 end
+
+-- Tooltip an einem Element: Titel und Erklaerung als Locale-Schluessel (Erklaerung optional)
+function UI:Tip(frame, titleKey, textKey)
+  frame:SetScript("OnEnter", function()
+    GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+    GameTooltip:AddLine(T(titleKey), 1, 0.82, 0.26)
+    if textKey and BF.L.enUS[textKey] then GameTooltip:AddLine(T(textKey), 0.85, 0.85, 0.85, 1) end
+    GameTooltip:Show()
+  end)
+  frame:SetScript("OnLeave", function() GameTooltip:Hide() end)
+end
+
+-- Hintergrundfarbe eines Knopfs dauerhaft setzen (Farbe je Liste)
+function UI:Tint(b, rgb)
+  b.bgColor = rgb
+  b:SetBackdropColor(rgb[1], rgb[2], rgb[3], 0.95)
+end
+
+-- Farben der Listen: Vendor Bernstein, Mail Gruen, Nie anfassen Rot, Behalten Blau, Unsortiert Grau
+UI.LIST_COLOR = {
+  V = { 0.48, 0.32, 0.06 },
+  M = { 0.10, 0.34, 0.14 },
+  I = { 0.40, 0.10, 0.10 },
+  K = { 0.10, 0.22, 0.44 },
+  U = { 0.18, 0.18, 0.22 },
+}
 
 -- Umschalter mit Haken, haengt direkt an einem Feld der Datenbank
 function UI:Check(parent, key, field, onChange)
@@ -170,6 +197,7 @@ function UI:Check(parent, key, field, onChange)
   local fs = self:Font(b, 11, C.text)
   fs:SetPoint("LEFT", box, "RIGHT", 6, 0)
   self:Loc(fs, key)
+  b.fs = fs
   -- field: Name eines Feldes der Datenbank oder { get = fn, set = fn }
   local function get()
     if type(field) == "table" then return field.get() end
@@ -290,14 +318,17 @@ function UI:BuildMain()
   self.tabLists:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -42)
   self.tabSettings = self:Button(f, 100, 24, "TAB_SETTINGS", function() UI:ShowPage("settings") end)
   self.tabSettings:SetPoint("LEFT", self.tabLists, "RIGHT", 6, 0)
-  self.tabModules = self:Button(f, 70, 24, "TAB_MODULES", function() UI:ShowPage("modules") end)
-  self.tabModules:SetPoint("LEFT", self.tabSettings, "RIGHT", 6, 0)
   self.tabSpeed = self:Button(f, 80, 24, "TAB_SPEEDRUN", function() UI:ShowPage("speedrun") end)
-  self.tabSpeed:SetPoint("LEFT", self.tabModules, "RIGHT", 6, 0)
+  self.tabSpeed:SetPoint("LEFT", self.tabSettings, "RIGHT", 6, 0)
   self.tabWish = self:Button(f, 80, 24, "TAB_WISH", function() UI:ShowPage("wish") end)
   self.tabWish:SetPoint("LEFT", self.tabSpeed, "RIGHT", 6, 0)
 
-  -- Session-Zeile oben rechts (Start/Stopp der Session gibt es nur in der Leiste)
+  -- Session starten/stoppen auch im Hauptfenster (rechts in der Reiterzeile), nicht nur in der Leiste
+  self.sessBtn = self:Button(f, 100, 24, "BTN_SESSION_START", function() BF.Session:Toggle() end, "ok")
+  self.sessBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -14, -42)
+  self:Tip(self.sessBtn, "BAR_SESSION", "TT_SESSION")
+
+  -- Session-Zeile oben rechts
   self.sessText = self:Font(f, 10, C.text)
   self.sessText:SetPoint("TOPRIGHT", f, "TOPRIGHT", -44, -18)
   self.sessText:SetJustifyH("RIGHT")
@@ -313,11 +344,6 @@ function UI:BuildMain()
   self.pageSettings:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -74)
   self.pageSettings:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 0)
   self:BuildSettings(self.pageSettings)
-
-  self.pageModules = CreateFrame("Frame", nil, f)
-  self.pageModules:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -74)
-  self.pageModules:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 0)
-  self:BuildModules(self.pageModules)
 
   self.pageSpeedrun = CreateFrame("Frame", nil, f)
   self.pageSpeedrun:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -74)
@@ -346,35 +372,43 @@ end
 function UI:BuildLists(p)
   self.chips = {}
   local prev
+  local widths = { V = 66, M = 66, I = 104, K = 86, U = 100 }
   for i = 1, getn(BF.LIST_KEYS) do
     local key = BF.LIST_KEYS[i]
-    local b = self:Button(p, 86, 22, nil, function()
+    local b = self:Button(p, widths[key] or 86, 22, nil, function()
       UI.sel = key
       UI.offset = 0
       UI:RefreshList()
     end, "flat")
     if prev then b:SetPoint("LEFT", prev, "RIGHT", 4, 0) else b:SetPoint("TOPLEFT", p, "TOPLEFT", 14, -6) end
+    self:Tip(b, "LIST_" .. key, "LISTDESC_" .. key)
     prev = b
     self.chips[key] = b
   end
 
+  -- Was bedeutet die gewaehlte Liste? (eine Zeile unter den Reitern)
+  self.listDesc = self:Font(p, 10, C.text)
+  self.listDesc:SetPoint("TOPLEFT", p, "TOPLEFT", 16, -33)
+  self.listDesc:SetWidth(448)
+  self.listDesc:SetHeight(12)
+
   local h1 = self:Font(p, 10, C.muted)
-  h1:SetPoint("TOPLEFT", p, "TOPLEFT", 40, -36)
+  h1:SetPoint("TOPLEFT", p, "TOPLEFT", 40, -50)
   self:Loc(h1, "COL_ITEM")
   local h2 = self:Font(p, 10, C.muted)
-  h2:SetPoint("TOPRIGHT", p, "TOPLEFT", 300, -36)
+  h2:SetPoint("TOPRIGHT", p, "TOPLEFT", 288, -50)
   self:Loc(h2, "COL_VENDOR")
   self.colVendor = h2
   local h3 = self:Font(p, 10, C.muted)
-  h3:SetPoint("TOPRIGHT", p, "TOPLEFT", 376, -36)
+  h3:SetPoint("TOPRIGHT", p, "TOPLEFT", 364, -50)
   self:Loc(h3, "COL_AH")
 
   self.rows = {}
   for i = 1, ROWS do
     local r = CreateFrame("Button", nil, p)
     r:SetHeight(ROW_H - 2)
-    r:SetPoint("TOPLEFT", p, "TOPLEFT", 14, -50 - (i - 1) * ROW_H)
-    r:SetPoint("TOPRIGHT", p, "TOPRIGHT", -14, -50 - (i - 1) * ROW_H)
+    r:SetPoint("TOPLEFT", p, "TOPLEFT", 14, -64 - (i - 1) * ROW_H)
+    r:SetPoint("TOPRIGHT", p, "TOPRIGHT", -14, -64 - (i - 1) * ROW_H)
     local bg = r:CreateTexture(nil, "BACKGROUND")
     bg:SetTexture(WHITE)
     bg:SetAllPoints(r)
@@ -385,26 +419,33 @@ function UI:BuildLists(p)
     r.icon:SetPoint("LEFT", r, "LEFT", 2, 0)
     r.name = self:Font(r, 11)
     r.name:SetPoint("LEFT", r, "LEFT", 26, 0)
-    r.name:SetWidth(186)
+    r.name:SetWidth(176)
     r.name:SetHeight(12)
     r.vendor = self:Font(r, 10)
-    r.vendor:SetPoint("RIGHT", r, "LEFT", 286, 0)
+    r.vendor:SetPoint("RIGHT", r, "LEFT", 274, 0)
     r.vendor:SetJustifyH("RIGHT")
     r.ah = self:Font(r, 10)
-    r.ah:SetPoint("RIGHT", r, "LEFT", 362, 0)
+    r.ah:SetPoint("RIGHT", r, "LEFT", 350, 0)
     r.ah:SetJustifyH("RIGHT")
-    -- Mailliste: Klick auf das Ziel schaltet es weiter, Rechtsklick zurueck
+    -- Mailliste: Klick auf das Ziel oeffnet die Auswahl der Mailziele, Rechtsklick schaltet zurueck
     r.tgt = CreateFrame("Button", nil, r)
     r.tgt:SetWidth(76)
     r.tgt:SetHeight(18)
-    r.tgt:SetPoint("RIGHT", r, "LEFT", 290, 0)
+    r.tgt:SetPoint("RIGHT", r, "LEFT", 278, 0)
     r.tgt:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     r.tgt:SetScript("OnClick", function()
       local row = this:GetParent()
       if not row.id then return end
       PlaySound("igMainMenuOptionCheckBoxOn")
-      BF.Mail:CycleTarget(row.id, arg1 == "RightButton" and -1 or 1)
-      UI:RefreshList()
+      if arg1 == "RightButton" or getn(BananaFarmDB.mailTargets) < 2 then
+        BF.Mail:CycleTarget(row.id, arg1 == "RightButton" and -1 or 1)
+        UI:RefreshList()
+      else
+        UI:ShowPicker(this, BananaFarmDB.mailTargets, function(name)
+          BananaFarmDB.mailTarget[row.id] = name
+          UI:RefreshList()
+        end)
+      end
     end)
     r.tgt:SetScript("OnEnter", function()
       GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
@@ -427,15 +468,22 @@ function UI:BuildLists(p)
     for j = 1, 5 do
       local list = defs[j][2]
       local label = defs[j][1]
-      local b = self:Button(r, 16, 18, label, function()
+      local b = self:Button(r, 18, 18, label, function()
         local id = r.id
         if not id then return end
         BF.Lists:Set(id, list)
       end, list and "flat" or "danger")
-      b:SetPoint("RIGHT", r, "RIGHT", -2 - (5 - j) * 17, 0)
+      if list then self:Tint(b, UI.LIST_COLOR[list]) end
+      b:SetPoint("RIGHT", r, "RIGHT", -2 - (5 - j) * 19, 0)
       b:SetScript("OnEnter", function()
         GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
-        GameTooltip:AddLine(list and T("LIST_" .. list) or T("TT_REMOVE"), 1, 0.82, 0.26)
+        if list then
+          GameTooltip:AddLine(string.format(T("TT_MOVE_TO"), T("LIST_" .. list)), 1, 0.82, 0.26)
+          GameTooltip:AddLine(T("LISTDESC_" .. list), 0.85, 0.85, 0.85, 1)
+        else
+          GameTooltip:AddLine(T("TT_REMOVE"), 1, 0.82, 0.26)
+          GameTooltip:AddLine(T("TT_REMOVE_DESC"), 0.85, 0.85, 0.85, 1)
+        end
         GameTooltip:Show()
       end)
       b:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -445,7 +493,7 @@ function UI:BuildLists(p)
   end
 
   self.empty = self:Font(p, 11, C.muted)
-  self.empty:SetPoint("TOP", p, "TOP", 0, -110)
+  self.empty:SetPoint("TOP", p, "TOP", 0, -120)
   self:Loc(self.empty, "EMPTY_LIST")
 
   p:EnableMouseWheel(true)
@@ -454,7 +502,7 @@ function UI:BuildLists(p)
     UI:RefreshList()
   end)
 
-  local y = -50 - ROWS * ROW_H - 6
+  local y = -64 - ROWS * ROW_H - 6
   self.pageText = self:Font(p, 10, C.muted)
   self.pageText:SetPoint("TOPRIGHT", p, "TOPRIGHT", -62, y - 4)
   self.pageText:SetJustifyH("RIGHT")
@@ -491,6 +539,9 @@ function UI:RefreshList()
     b.fs:SetText(T("LIST_" .. key) .. " (" .. BF.Lists:CountOf(key) .. ")")
     b:SetActive(key == self.sel)
   end
+  local col = UI.LIST_COLOR[self.sel]
+  self.listDesc:SetText(T("LISTDESC_" .. self.sel))
+  if col then self.listDesc:SetTextColor(0.6 + col[1] * 0.8, 0.6 + col[2] * 0.8, 0.6 + col[3] * 0.8) end
   -- auf der Mailliste steht statt des Haendlerwerts das Mailziel
   local mailTab = self.sel == "M"
   self.colVendor:SetText(T(mailTab and "COL_TARGET" or "COL_VENDOR"))
@@ -565,27 +616,179 @@ local function resort()
   UI:Refresh()
 end
 
+-- Einstellungen: eine scrollbare Seite, nach Bereichen gegliedert. Jeder Bereich, der zu einem Modul
+-- gehoert, hat den Modulschalter als Ueberschrift; ist das Modul aus, werden seine Zeilen blass.
+-- (Ersetzt den frueheren Reiter "Module"; das Einrichtungsfenster nutzt weiter UI:ModuleChecks.)
 function UI:BuildSettings(p)
   self.edits = {}
   self.checks = {}
-  local y = -10
+  self.sections = {}
+
+  local sf = CreateFrame("ScrollFrame", "BananaFarmSettingsScroll", p)
+  sf:SetPoint("TOPLEFT", p, "TOPLEFT", 0, -4)
+  sf:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT", -22, 8)
+  local c = CreateFrame("Frame", nil, sf)
+  c:SetWidth(452)
+  c:SetHeight(100)
+  sf:SetScrollChild(c)
+  self.setScroll = sf
+  self.setContent = c
+
+  -- schmaler Rollbalken rechts
+  local bar = CreateFrame("Slider", "BananaFarmSettingsBar", p)
+  bar:SetOrientation("VERTICAL")
+  bar:SetWidth(16)
+  bar:SetPoint("TOPRIGHT", p, "TOPRIGHT", -8, -6)
+  bar:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT", -8, 10)
+  bar:SetBackdrop(self.BACKDROP)
+  bar:SetBackdropColor(0.02, 0.03, 0.06, 0.9)
+  bar:SetBackdropBorderColor(C.brass[1], C.brass[2], C.brass[3], 0.6)
+  bar:SetThumbTexture("Interface\\Buttons\\UI-ScrollBar-Knob")
+  local thumb = bar:GetThumbTexture()
+  if thumb then
+    thumb:SetWidth(16)
+    thumb:SetHeight(24)
+  end
+  bar:SetMinMaxValues(0, 1)
+  bar:SetValueStep(1)
+  bar:SetValue(0)
+  bar:SetScript("OnValueChanged", function() sf:SetVerticalScroll(this:GetValue()) end)
+  self.setBar = bar
+  local function wheel()
+    local lo, hi = bar:GetMinMaxValues()
+    local v = bar:GetValue() - (arg1 or 0) * 44
+    if v < lo then v = lo end
+    if v > hi then v = hi end
+    bar:SetValue(v)
+  end
+  sf:EnableMouseWheel(true)
+  sf:SetScript("OnMouseWheel", wheel)
+  p:EnableMouseWheel(true)
+  p:SetScript("OnMouseWheel", wheel)
+
+  local y = -6
+  local sec
+
+  -- Bereich beginnen: Ueberschrift (mit Modulschalter, wenn module gesetzt ist)
+  local function section(key, module, tipKey)
+    y = y - 6
+    sec = { rows = {}, module = module }
+    table.insert(self.sections, sec)
+    local line = c:CreateTexture(nil, "ARTWORK")
+    line:SetTexture(WHITE)
+    line:SetVertexColor(C.goldDim[1], C.goldDim[2], C.goldDim[3], 0.45)
+    line:SetHeight(1)
+    line:SetPoint("TOPLEFT", c, "TOPLEFT", 10, y)
+    line:SetPoint("TOPRIGHT", c, "TOPRIGHT", -6, y)
+    y = y - 6
+    if module then
+      local chk = self:Check(c, key, {
+        get = function() return BF:Enabled(module) end,
+        set = function(v) BF:SetModule(module, v) end,
+      }, function() UI:RefreshModules() end)
+      chk:SetPoint("TOPLEFT", c, "TOPLEFT", 12, y)
+      chk.fs:SetFont(FONT, 12, "")
+      chk.fs:SetTextColor(C.gold[1], C.gold[2], C.gold[3])
+      self:Tip(chk, key, tipKey)
+      table.insert(self.checks, chk)
+    else
+      local fs = self:Font(c, 12, C.gold)
+      fs:SetPoint("TOPLEFT", c, "TOPLEFT", 14, y - 2)
+      self:Loc(fs, key)
+    end
+    y = y - 24
+  end
+
+  local function own(frame)
+    table.insert(sec.rows, frame)
+  end
 
   local function editRow(key, name, w, getter, setter, maxLetters)
-    local e = self:EditBox(name, p, w, getter, setter, maxLetters)
-    e:SetPoint("TOPLEFT", p, "TOPLEFT", 24, y)
-    local fs = self:Font(p, 11)
+    local e = self:EditBox(name, c, w, getter, setter, maxLetters)
+    e:SetPoint("TOPLEFT", c, "TOPLEFT", 40, y)
+    local fs = self:Font(c, 11)
     fs:SetPoint("LEFT", e, "RIGHT", 10, 0)
     self:Loc(fs, key)
+    -- Erklaerung beim Ueberfahren des Feldes
+    e:SetScript("OnEnter", function()
+      GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+      GameTooltip:AddLine(T(key), 1, 0.82, 0.26)
+      if BF.L.enUS[key .. "_TT"] then GameTooltip:AddLine(T(key .. "_TT"), 0.85, 0.85, 0.85, 1) end
+      GameTooltip:Show()
+    end)
+    e:SetScript("OnLeave", function() GameTooltip:Hide() end)
     table.insert(self.edits, e)
+    own(e)
+    own(fs)
     y = y - 26
   end
 
-  editRow("SET_ALT", "BananaFarmEditAlt", 110,
-    function() return BananaFarmDB.bankAlt end,
-    function(v) BF:SetBankAlt(v) end)
-  editRow("SET_MAILTARGETS", "BananaFarmEditMailTargets", 220,
-    function() return table.concat(BananaFarmDB.mailTargets, ", ") end,
-    function(v) BF.Mail:SetTargets(v) end, 120)
+  local function checkRow(key, field, onChange)
+    local chk = self:Check(c, key, field, onChange)
+    chk:SetPoint("TOPLEFT", c, "TOPLEFT", 36, y)
+    if BF.L.enUS[key .. "_TT"] then self:Tip(chk, key, key .. "_TT") end
+    table.insert(self.checks, chk)
+    own(chk)
+    y = y - 22
+  end
+
+  local function infoRow(key)
+    local fs = self:Font(c, 10, C.muted)
+    fs:SetPoint("TOPLEFT", c, "TOPLEFT", 38, y - 2)
+    fs:SetWidth(400)
+    self:Loc(fs, key)
+    own(fs)
+    y = y - 18
+  end
+
+  local function buttonRow(defs)
+    local x = 38
+    for i = 1, getn(defs) do
+      local d = defs[i]
+      local b = self:Button(c, d[2], 22, d[1], d[3], d[4])
+      b:SetPoint("TOPLEFT", c, "TOPLEFT", x, y)
+      if d[5] then self:Tip(b, d[1], d[5]) end
+      own(b)
+      x = x + d[2] + 6
+    end
+    y = y - 28
+  end
+
+  -- Allgemein
+  section("SEC_GENERAL")
+  local lang = self:Font(c, 11)
+  lang:SetPoint("TOPLEFT", c, "TOPLEFT", 40, y - 4)
+  self:Loc(lang, "SET_LANG")
+  self.langBtns = {}
+  local ldefs = { { "de", "Deutsch" }, { "en", "English" }, { "auto", "Auto" } }
+  for i = 1, 3 do
+    local code = ldefs[i][1]
+    local b = self:Button(c, 76, 22, ldefs[i][2], function() UI:SetLanguage(code) end, "flat")
+    b:SetPoint("TOPLEFT", c, "TOPLEFT", 130 + (i - 1) * 80, y)
+    self.langBtns[code] = b
+  end
+  y = y - 28
+  buttonRow({
+    { "BTN_HOWTO", 110, function() UI:ShowSetupStep("howto") end, "flat", "TT_HOWTO" },
+    { "BTN_SETUP", 110, function() UI:ShowSetup() end, "flat", "TT_SETUP" },
+    { "BTN_PROBE", 110, function() BF:Probe() end, "flat", "TT_PROBE" },
+  })
+  buttonRow({ { "BTN_SUPPORT", 140, function() UI:ShowDonate() end, "primary", "TT_SUPPORT" } })
+
+  -- Session und Leiste
+  section("SEC_TRACKING", "tracking", "MOD_TRACKING")
+  checkRow("CHK_BAR", "bar", function() UI:Refresh() end)
+  checkRow("CHK_OFFLINE", "offlineTime")
+  checkRow("CHK_REPAIR", "repairCost")
+  editRow("SET_BAGWARN", "BananaFarmEditBagWarn", 50,
+    function() return tostring(BananaFarmDB.bagWarn) end,
+    function(v)
+      local n = num(v)
+      if n and n >= 0 then BananaFarmDB.bagWarn = floor(n) end
+    end)
+
+  -- Listen und Sortierung
+  section("SEC_ITEMS", "items", "MOD_ITEMS")
   editRow("SET_THRESHOLD", "BananaFarmEditThreshold", 50,
     function() return tostring(BananaFarmDB.threshold) end,
     function(v)
@@ -604,70 +807,85 @@ function UI:BuildSettings(p)
         resort()
       end
     end)
-  editRow("SET_BAGWARN", "BananaFarmEditBagWarn", 50,
-    function() return tostring(BananaFarmDB.bagWarn) end,
-    function(v)
-      local n = num(v)
-      if n and n >= 0 then BananaFarmDB.bagWarn = floor(n) end
-    end)
+  checkRow("CHK_AHCUT", "ahCut", resort)
+  checkRow("CHK_GRAY", "grayVendor", resort)
+  checkRow("CHK_POPUP", "popup", function() BF.Lists:PopNext() end)
+  checkRow("CHK_ALTCLICK", "altClick")
+  checkRow("CHK_KEEP", "keepProtect")
+
+  -- Haendler
+  section("SEC_VENDOR", "vendor", "MOD_VENDOR")
+  checkRow("CHK_AUTOSELL", "autoSell")
+  checkRow("CHK_PROTECT", "protect")
+  buttonRow({ { "BTN_PRICES", 150, function() BF.Vendor:Command("") end, "flat", "TT_PRICES" } })
+
+  -- Post
+  section("SEC_MAIL", "mail", "MOD_MAIL")
+  editRow("SET_MAILTARGETS", "BananaFarmEditMailTargets", 220,
+    function() return table.concat(BananaFarmDB.mailTargets, ", ") end,
+    function(v) BF.Mail:SetTargets(v) end, 120)
+  checkRow("CHK_MAILASK", "mailAsk")
+
+  -- Twink und Sync
+  section("SEC_SYNC", "sync", "MOD_SYNC")
+  editRow("SET_ALT", "BananaFarmEditAlt", 110,
+    function() return BananaFarmDB.bankAlt end,
+    function(v) BF:SetBankAlt(v) end)
+  checkRow("CHK_SYNC", "autoSync")
+
+  -- Resets
+  section("SEC_RESETS", "resets", "MOD_RESETS")
   editRow("SET_RESETLIMIT", "BananaFarmEditResetLimit", 50,
     function() return tostring(BananaFarmDB.resetLimit) end,
     function(v)
       local n = num(v)
       if n and n >= 1 then BananaFarmDB.resetLimit = floor(n) end
     end)
+
+  -- Pull-Zaehler
+  section("SEC_PULLS", "pulls", "MOD_PULLS")
+  checkRow("CHK_HUNTER", { get = function() return BF:HunterMode() end, set = function(v) BF:SetHunterMode(v) end },
+    function() UI:Refresh() end)
   editRow("SET_PULLLIMIT", "BananaFarmEditPullLimit", 50,
     function() return tostring(BananaFarmDB.pullLimit) end,
     function(v)
       local n = num(v)
       if n and n >= 1 then BananaFarmDB.pullLimit = floor(n) end
     end)
+  infoRow("INFO_PULLS")
 
-  y = y - 6
-  local function checkRow(key, field, onChange)
-    local c = self:Check(p, key, field, onChange)
-    c:SetPoint("TOPLEFT", p, "TOPLEFT", 20, y)
-    table.insert(self.checks, c)
-    y = y - 22
-  end
-  checkRow("CHK_AHCUT", "ahCut", resort)
-  checkRow("CHK_GRAY", "grayVendor", resort)
-  checkRow("CHK_POPUP", "popup", function() BF.Lists:PopNext() end)
-  checkRow("CHK_AUTOSELL", "autoSell")
-  checkRow("CHK_PROTECT", "protect")
-  checkRow("CHK_HUNTER", { get = function() return BF:HunterMode() end, set = function(v) BF:SetHunterMode(v) end },
-    function() UI:Refresh() end)
-  checkRow("CHK_MAILASK", "mailAsk")
-  checkRow("CHK_ALTCLICK", "altClick")
-  checkRow("CHK_BAR", "bar", function() UI:Refresh() end)
-  checkRow("CHK_KEEP", "keepProtect")
-  checkRow("CHK_SYNC", "autoSync")
+  -- Speedrun und Wunschliste: nur an/aus, alles Weitere im eigenen Reiter
+  section("SEC_SPEEDRUN", "speedrun", "MOD_SPEEDRUN")
+  infoRow("INFO_SPEEDRUN")
+  section("SEC_WISH", "wish", "MOD_WISH")
+  infoRow("INFO_WISH")
 
-  y = y - 10
-  local lang = self:Font(p, 11)
-  lang:SetPoint("TOPLEFT", p, "TOPLEFT", 20, y - 4)
-  self:Loc(lang, "SET_LANG")
-  self.langBtns = {}
-  local defs = { { "de", "Deutsch" }, { "en", "English" }, { "auto", "Auto" } }
-  for i = 1, 3 do
-    local code = defs[i][1]
-    local b = self:Button(p, 76, 22, defs[i][2], function() UI:SetLanguage(code) end, "flat")
-    b:SetPoint("TOPLEFT", p, "TOPLEFT", 110 + (i - 1) * 80, y)
-    self.langBtns[code] = b
-  end
-
-  local probe = self:Button(p, 140, 24, "BTN_PROBE", function() BF:Probe() end)
-  probe:SetPoint("BOTTOMLEFT", p, "BOTTOMLEFT", 18, 14)
+  c:SetHeight(-y + 10)
+  self.setHeight = -y + 10
 end
 
 function UI:RefreshSettings()
   for i = 1, getn(self.edits) do self.edits[i].Update() end
   for i = 1, getn(self.checks) do self.checks[i].Update() end
   for code, b in pairs(self.langBtns) do b:SetActive(BananaFarmDB.lang == code) end
+  -- Bereiche ausgeschalteter Module blass zeigen (bleiben bedienbar)
+  for i = 1, getn(self.sections) do
+    local s = self.sections[i]
+    local a = 1
+    if s.module and not BF:Enabled(s.module) then a = 0.4 end
+    for j = 1, getn(s.rows) do s.rows[j]:SetAlpha(a) end
+  end
+  -- Rollbereich an die Hoehe anpassen
+  local h = self.setScroll:GetHeight() or 0
+  local range = (self.setHeight or 0) - h
+  if range < 0 then range = 0 end
+  self.setBar:SetMinMaxValues(0, range)
+  if range == 0 then self.setBar:Hide() else self.setBar:Show() end
+  if self.setBar:GetValue() > range then self.setBar:SetValue(range) end
 end
 
 -- ------------------------------------------------------------
--- Module: Reiter im Hauptfenster und Einrichtungsfenster beim ersten Start
+-- Module: Schalter fuer das Einrichtungsfenster beim ersten Start
 -- ------------------------------------------------------------
 function UI:ModuleChecks(parent, x, y)
   self.modChecks = self.modChecks or {}
@@ -694,12 +912,54 @@ function UI:RefreshModules()
   self:Refresh()
 end
 
-function UI:BuildModules(p)
-  local info = self:Font(p, 11, C.muted)
-  info:SetPoint("TOPLEFT", p, "TOPLEFT", 20, -12)
-  info:SetWidth(440)
-  self:Loc(info, "MODULES_HINT")
-  self:ModuleChecks(p, 20, -56)
+-- Kleines Auswahlmenue unter einem Element (z. B. Mailziele). onPick(name) beim Klick.
+function UI:ShowPicker(anchor, names, onPick)
+  local m = self.picker
+  if not m then
+    m = CreateFrame("Frame", "BananaFarmPicker", UIParent)
+    m:SetFrameStrata("FULLSCREEN_DIALOG")
+    m:SetWidth(150)
+    m:SetBackdrop(self.BACKDROP)
+    m:SetBackdropColor(0.05, 0.07, 0.14, 0.98)
+    m:SetBackdropBorderColor(C.goldDim[1], C.goldDim[2], C.goldDim[3], 0.9)
+    m:EnableMouse(true)
+    m.btn = {}
+    for i = 1, 8 do
+      local k = i -- Lua 5.0: Kopie der Zaehlvariable je Durchlauf (Closures)
+      local b = self:Button(m, 134, 20, "?", function()
+        local name = m.btn[k].value
+        m:Hide()
+        if name and m.onPick then m.onPick(name) end
+      end, "flat")
+      b:SetPoint("TOPLEFT", m, "TOPLEFT", 8, -8 - (i - 1) * 22)
+      m.btn[i] = b
+    end
+    tinsert(UISpecialFrames, "BananaFarmPicker")
+    self.picker = m
+  end
+  if m:IsVisible() and m.anchor == anchor then
+    m:Hide()
+    return
+  end
+  local n = getn(names)
+  if n > 8 then n = 8 end
+  for i = 1, 8 do
+    local b = m.btn[i]
+    if i <= n then
+      b.value = names[i]
+      b.fs:SetText(names[i])
+      b:Show()
+    else
+      b.value = nil
+      b:Hide()
+    end
+  end
+  m.anchor = anchor
+  m.onPick = onPick
+  m:SetHeight(14 + n * 22)
+  m:ClearAllPoints()
+  m:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -2)
+  m:Show()
 end
 
 function UI:BuildSetup()
@@ -753,6 +1013,8 @@ function UI:BuildSetupStep()
   nextBtn:SetPoint("BOTTOMRIGHT", f, "BOTTOM", -4, 14)
   local skip = self:Button(f, 130, 24, "BTN_SKIP", function() UI:SetupStepDone(false) end, "flat")
   skip:SetPoint("BOTTOMLEFT", f, "BOTTOM", 4, 14)
+  f.nextBtn = nextBtn
+  f.skip = skip
   -- Escape zaehlt als Ueberspringen
   tinsert(UISpecialFrames, "BananaFarmSetupStep")
   f:SetScript("OnHide", function() UI:SetupStepDone(false) end)
@@ -760,10 +1022,25 @@ end
 
 function UI:ShowSetupStep(kind)
   if kind == "twink" and not BF:Enabled("sync") then kind = "mail" end
-  if kind == "mail" and not BF:Enabled("mail") then return end
+  if kind == "mail" and not BF:Enabled("mail") then kind = "howto" end
   local f = self.step
   f.kind = kind
   f.active = true
+  -- letzter Schritt: kurze Anleitung ohne Eingabefeld
+  if kind == "howto" then
+    f.title:SetText(T("SETUP_HOWTO_TITLE"))
+    f.text:SetText(T("SETUP_HOWTO_TEXT"))
+    f:SetHeight(250)
+    f.edit:Hide()
+    f.skip:Hide()
+    f.nextBtn.fs:SetText(T("BTN_GO"))
+    f:Show()
+    return
+  end
+  f:SetHeight(200)
+  f.edit:Show()
+  f.skip:Show()
+  f.nextBtn.fs:SetText(T("BTN_NEXT"))
   if kind == "twink" then
     f.title:SetText(T("SETUP_TWINK_TITLE"))
     f.text:SetText(T("SETUP_TWINK_TEXT"))
@@ -783,10 +1060,15 @@ function UI:SetupStepDone(save)
   f.active = false
   local v = BF.Trim(f.edit:GetText() or "")
   f:Hide()
+  if f.kind == "howto" then return end
   if save and v ~= "" then
     if f.kind == "twink" then BF:SetBankAlt(v) else BF.Mail:SetTargets(v) end
   end
-  if f.kind == "twink" then self:ShowSetupStep("mail") end
+  if f.kind == "twink" then
+    self:ShowSetupStep("mail")
+  else
+    self:ShowSetupStep("howto")
+  end
 end
 
 function UI:ShowSetup()
@@ -811,16 +1093,15 @@ function UI:ShowPage(page)
   if page == "lists" and not BF:Enabled("items") then page = "settings" end
   if page == "speedrun" and not BF:Enabled("speedrun") then page = "settings" end
   if page == "wish" and not BF:Enabled("wish") then page = "settings" end
+  if page == "modules" then page = "settings" end
   self.page = page
   if page == "lists" then self.pageLists:Show() else self.pageLists:Hide() end
   if page == "settings" then self.pageSettings:Show() else self.pageSettings:Hide() end
-  if page == "modules" then self.pageModules:Show() else self.pageModules:Hide() end
   if page == "speedrun" then self.pageSpeedrun:Show() else self.pageSpeedrun:Hide() end
   if page == "wish" then self.pageWish:Show() else self.pageWish:Hide() end
   if page ~= "wish" and BF.Wish then BF.Wish:Capture(false) end
   self.tabLists:SetActive(page == "lists")
   self.tabSettings:SetActive(page == "settings")
-  self.tabModules:SetActive(page == "modules")
   self.tabSpeed:SetActive(page == "speedrun")
   self.tabWish:SetActive(page == "wish")
   self:RefreshList()
@@ -1312,6 +1593,8 @@ function UI:RefreshSession()
       text = gray .. T("BAR_IDLE") .. "|r"
     end
     self.sessText:SetText(text)
+    self.sessBtn.fs:SetText(T(running and "BTN_SESSION_STOP" or "BTN_SESSION_START"))
+    self:Tint(self.sessBtn, running and { 0.38, 0.08, 0.06 } or { 0.10, 0.32, 0.12 })
   end
 
   if self.bar:IsVisible() then
@@ -1408,6 +1691,7 @@ function UI:BuildBar()
   if not BananaFarmDB.pos["BananaFarmBar"] then f:SetPoint("TOP", UIParent, "TOP", 0, -120) end
   f.btn = self:Button(f, 48, 22, "BTN_START", function() BF.Session:Toggle() end, "ok")
   f.btn:SetPoint("TOPLEFT", f, "TOPLEFT", 4, -9)
+  self:Tip(f.btn, "BAR_SESSION", "TT_SESSION")
   local open = self:Button(f, 22, 22, "BF", function() UI:Toggle() end, "primary")
   open:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -9)
   -- nur auf dem Twink (Gruppenleiter): Instanzen fuer den Farmchar zuruecksetzen
@@ -1441,6 +1725,8 @@ function UI:BuildBar()
   f.swBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 4, 4)
   f.swReset = self:Button(f, 40, 18, "BTN_SW_RESET", function() BF.Speedrun:Reset() end, "flat")
   f.swReset:SetPoint("LEFT", f.swBtn, "RIGHT", 4, 0)
+  self:Tip(f.swBtn, "BAR_LAP", "TT_LAP")
+  self:Tip(f.swReset, "BTN_SW_RESET", "TT_LAP_RESET")
   f.text3 = self:Font(f, 10)
   f.text3:SetPoint("LEFT", f.swReset, "RIGHT", 8, 0)
   f.text3:SetJustifyH("LEFT")
@@ -1457,12 +1743,14 @@ end
 -- Zuordnungs-Pop-up fuer unsortierte Items
 -- ------------------------------------------------------------
 function UI:BuildAssign()
-  local f = self:Window("BananaFarmAssign", 320, 128)
+  local f = self:Window("BananaFarmAssign", 440, 128)
   self.assign = f
   if not BananaFarmDB.pos["BananaFarmAssign"] then f:SetPoint("CENTER", UIParent, "CENTER", 0, 180) end
   local title = self:Font(f, 12, C.gold)
   title:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -12)
-  self:Loc(title, "ASSIGN_TITLE")
+  title:SetText(T("ASSIGN_TITLE"))
+  f.title = title
+  tinsert(UISpecialFrames, "BananaFarmAssign")
   f.left = self:Font(f, 9, C.muted)
   f.left:SetPoint("TOPRIGHT", f, "TOPRIGHT", -14, -14)
 
@@ -1478,7 +1766,7 @@ function UI:BuildAssign()
   slot:SetScript("OnLeave", function() GameTooltip:Hide() end)
   f.name = self:Font(f, 12)
   f.name:SetPoint("TOPLEFT", slot, "TOPRIGHT", 8, -2)
-  f.name:SetWidth(250)
+  f.name:SetWidth(360)
   f.name:SetHeight(13)
   f.values = self:Font(f, 10, C.muted)
   f.values:SetPoint("TOPLEFT", slot, "TOPRIGHT", 8, -19)
@@ -1495,10 +1783,12 @@ function UI:BuildAssign()
       BF.Lists:PopNext()
     end
   end
-  local bv = self:Button(f, 70, 24, "LIST_V", choose("V"), "primary")
+  local bv = self:Button(f, 72, 24, "LIST_V", choose("V"), "primary")
   bv:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 12, 12)
+  self:Tint(bv, UI.LIST_COLOR.V)
+  self:Tip(bv, "LIST_V", "LISTDESC_V")
   -- Mail: ab zwei hinterlegten Mailzielen oeffnet sich eine Auswahl, sonst wird gleich zugeordnet
-  local bm = self:Button(f, 70, 24, "LIST_M", function()
+  local bm = self:Button(f, 72, 24, "LIST_M", function()
     if getn(BananaFarmDB.mailTargets) >= 2 then
       UI:ToggleAssignMenu()
     else
@@ -1506,6 +1796,8 @@ function UI:BuildAssign()
     end
   end, "ok")
   bm:SetPoint("LEFT", bv, "RIGHT", 5, 0)
+  self:Tint(bm, UI.LIST_COLOR.M)
+  self:Tip(bm, "LIST_M", "LISTDESC_M")
   local menu = CreateFrame("Frame", nil, f)
   menu:SetWidth(150)
   menu:SetHeight(60)
@@ -1529,10 +1821,17 @@ function UI:BuildAssign()
     menu.btn[i] = b
   end
   f.menu = menu
-  local bi = self:Button(f, 78, 24, "LIST_I", choose("I"))
+  local bi = self:Button(f, 100, 24, "LIST_I", choose("I"))
   bi:SetPoint("LEFT", bm, "RIGHT", 5, 0)
-  local bl = self:Button(f, 64, 24, "BTN_LATER", choose(nil), "flat")
-  bl:SetPoint("LEFT", bi, "RIGHT", 5, 0)
+  self:Tint(bi, UI.LIST_COLOR.I)
+  self:Tip(bi, "LIST_I", "LISTDESC_I")
+  local bk = self:Button(f, 84, 24, "LIST_K", choose("K"))
+  bk:SetPoint("LEFT", bi, "RIGHT", 5, 0)
+  self:Tint(bk, UI.LIST_COLOR.K)
+  self:Tip(bk, "LIST_K", "LISTDESC_K")
+  local bl = self:Button(f, 72, 24, "BTN_LATER", choose(nil), "flat")
+  bl:SetPoint("LEFT", bk, "RIGHT", 5, 0)
+  f.later = bl
 end
 
 -- Auswahl der Mailziele unter dem Pop-up ein- und ausblenden
@@ -1564,16 +1863,27 @@ function UI:AssignShown()
   return self.assign and self.assign:IsVisible()
 end
 
-function UI:ShowAssign(id)
+-- manual = true: per Alt+Klick aus der Tasche (auch fuer schon zugeordnete Items)
+function UI:ShowAssign(id, manual)
   local f = self.assign
+  -- ein offenes Pop-up aus der Warteschlange kommt spaeter wieder dran
+  if manual and f:IsVisible() and f.id and f.id ~= id and not f.manual then
+    table.insert(BF.Lists.queue, 1, f.id)
+  end
   f.id = id
+  f.manual = manual
   f.menu:Hide()
+  f.title:SetText(T(manual and "ASSIGN_TITLE_PICK" or "ASSIGN_TITLE"))
+  f.later.fs:SetText(T(manual and "BTN_CANCEL" or "BTN_LATER"))
   local name, q, tex = BF:ItemInfo(id)
   local c = BF.QUALITY_COLOR[q or 1] or BF.QUALITY_COLOR[1]
   f.icon:SetTexture(tex or "Interface\\Icons\\INV_Misc_QuestionMark")
   f.name:SetText(name)
   f.name:SetTextColor(c[1], c[2], c[3])
-  f.values:SetText(string.format(T("ASSIGN_VALUES"), moneyOrDash(BF:VendorValue(id)), ahText(id)))
+  local values = string.format(T("ASSIGN_VALUES"), moneyOrDash(BF:VendorValue(id)), ahText(id))
+  local cur = BF.Lists:Get(id)
+  if manual and cur then values = values .. "   " .. string.format(T("ASSIGN_NOW"), T("LIST_" .. cur)) end
+  f.values:SetText(values)
   local n = getn(BF.Lists.queue)
   if n > 0 then f.left:SetText(string.format(T("ASSIGN_LEFT"), n)) else f.left:SetText("") end
   f:Show()

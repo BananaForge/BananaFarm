@@ -20,7 +20,13 @@ local npCache = {}
 function BF:VendorValue(id)
   local v = BananaFarmDB.learned[id]
   if v and v > 0 then return v end
-  v = BF.VendorDB and BF.VendorDB[id]
+  return self:VendorTableValue(id)
+end
+
+-- Haendlerwert laut Tabelle (ShaguTweaks) oder Nampower, ohne das beim Haendler Gelernte.
+-- Die Preispruefung vergleicht damit, was der Haendler auf OctoWoW wirklich zahlt.
+function BF:VendorTableValue(id)
+  local v = BF.VendorDB and BF.VendorDB[id]
   if v and v > 0 then return v end
   if v == nil and GetItemStats then
     if npCache[id] == nil then

@@ -14,12 +14,55 @@ function Session:OnLoad()
   self.snap = nil
   self.settling = true
   local s = BananaFarmDB.session
-  -- eine laufende Session ueberlebt /reload und Relog: die Uhr laeuft ab jetzt weiter.
-  -- Die bis zum Logout gelaufene Zeit steht in s.elapsed (siehe PLAYER_LOGOUT).
-  if s.running then s.t0 = time() end
+  -- eine laufende Session ueberlebt /reload und Relog. Die bis zum Logout gelaufene Zeit steht in
+  -- s.elapsed (siehe PLAYER_LOGOUT). Die Offline-Zeit dazwischen (Relog beim Reset) zaehlt mit,
+  -- wenn die Option an ist und die Pause hoechstens offlineMax dauerte.
+  if s.running then
+    local now = time()
+    local last = s.logoutAt
+    if s.t0 then
+      -- kein sauberer Logout (Absturz): Laufzeit bis zum letzten Lebenszeichen nachtragen
+      local seen = s.seen or s.t0
+      if seen > s.t0 then s.elapsed = (s.elapsed or 0) + (seen - s.t0) end
+      last = seen
+    end
+    if BananaFarmDB.offlineTime and last then
+      local gap = now - last
+      if gap > 0 and gap <= (BananaFarmDB.offlineMax or 900) then s.elapsed = (s.elapsed or 0) + gap end
+    end
+    s.t0 = now
+    s.logoutAt = nil
+  end
+  self:Heartbeat()
+  self:HookRepair()
   -- Sessions aus 0.1.0 kennen noch keinen Run
   s.resets = s.resets or 0
   s.run = s.run or { items = {}, coin = 0, start = s.elapsed or 0 }
+end
+
+-- Lebenszeichen alle 10 s: nach einem Absturz weiss die Session so, bis wann sie lief
+function Session:Heartbeat()
+  local s = BananaFarmDB.session
+  if s.running then s.seen = time() end
+  BF:After(10, function() Session:Heartbeat() end, "sessionseen")
+end
+
+-- Reparatur am Haendler (z. B. Repairbot): Kosten zaehlen in der Session als Ausgabe.
+-- "Alles reparieren" ueber RepairAllItems, einzelne Teile ueber den Reparatur-Cursor (InRepairMode).
+function Session:HookRepair()
+  if self.repairHooked or not RepairAllItems then return end
+  self.repairHooked = true
+  local orig = RepairAllItems
+  RepairAllItems = function(a1)
+    Session.repairUntil = GetTime() + 3
+    return orig(a1)
+  end
+end
+
+function Session:Repairing()
+  if not BF.merchantOpen then return false end
+  if InRepairMode and InRepairMode() then return true end
+  return self.repairUntil ~= nil and GetTime() < self.repairUntil
 end
 
 -- Ein Instanz-Reset beendet den Run und beginnt den naechsten
@@ -28,6 +71,7 @@ function Session:NewRun()
   if not s.running then return end
   s.resets = (s.resets or 0) + 1
   s.run = { items = {}, coin = 0, start = self:Elapsed() }
+  if BF.Donate then BF.Donate:OnNewRun() end
 end
 
 -- Wert des laufenden Runs (seit dem letzten Reset) in Kupfer
@@ -36,6 +80,7 @@ function Session:RunValue()
   if not run then return 0 end
   local sum = run.coin or 0
   for id, c in pairs(run.items) do sum = sum + self:ItemValue(id) * c end
+  if BananaFarmDB.repairCost then sum = sum - (run.repair or 0) end
   return sum
 end
 
@@ -64,6 +109,7 @@ BF:On("PLAYER_LOGOUT", function()
   if s.running then
     s.elapsed = Session:Elapsed()
     s.t0 = nil
+    s.logoutAt = time()
   end
 end)
 
@@ -95,6 +141,7 @@ function Session:Stop()
   s.t0 = nil
   local total = self:Value()
   BF:Print(string.format(BF.T("MSG_SESSION_STOP"), BF.Duration(s.elapsed), BF.Money(total), BF.Money(self:PerHour())))
+  if BF.Donate then BF.Donate:OnSessionStop() end
   if BF.UI then BF.UI:Refresh() end
 end
 
@@ -134,6 +181,7 @@ function Session:Value()
     sum = sum + self:ItemValue(id) * c
     n = n + c
   end
+  if BananaFarmDB.repairCost then sum = sum - (s.repair or 0) end
   return sum, n
 end
 
@@ -272,5 +320,8 @@ BF:On("PLAYER_MONEY", function()
   if s.running and delta > 0 and not BF.Busy() and not Session.settling then
     s.coin = (s.coin or 0) + delta
     s.run.coin = (s.run.coin or 0) + delta
+  elseif s.running and delta < 0 and Session:Repairing() then
+    s.repair = (s.repair or 0) - delta
+    s.run.repair = (s.run.repair or 0) - delta
   end
 end)

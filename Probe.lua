@@ -141,9 +141,45 @@ function BF:Probe()
     add(CVARS[i] .. ": " .. (ok and tostring(val) or "(unbekannt)"))
   end
 
+  -- Namensplaketten: liefert SuperWoW dort die GUID (fuer den Pull-Zaehler)?
+  add("")
+  add("-- Namensplaketten (Taste V an, Mobs in der Naehe) --")
+  if WorldFrame and WorldFrame.GetChildren then
+    local kids = { WorldFrame:GetChildren() }
+    local vis, guids, sample = 0, 0, nil
+    for i = 1, getn(kids) do
+      local f = kids[i]
+      if f and f.IsVisible and f:IsVisible() then
+        vis = vis + 1
+        local ok, g = pcall(f.GetName, f, 1)
+        if ok and type(g) == "string" and string.sub(g, 1, 2) == "0x" then
+          guids = guids + 1
+          sample = sample or g
+        end
+      end
+    end
+    add("WorldFrame-Kinder sichtbar: " .. vis .. ", davon mit GUID: " .. guids)
+    if sample then
+      local ok, n = pcall(UnitName, sample)
+      add("Beispiel: " .. sample .. " = " .. tostring(ok and n))
+    end
+  end
+  local _, tg = UnitExists("target")
+  if tg then
+    local ok, r = pcall(UnitIsUnit, tg .. "target", "player")
+    add("UnitIsUnit(GUID..\"target\", player): " .. tostring(ok) .. ", " .. tostring(r))
+  else
+    add("(fuer den GUID-Ziel-Test einen Mob anvisieren, der dich angreift)")
+  end
+  add("IsInInstance: " .. type(IsInInstance) .. (IsInInstance and (" = " .. tostring(IsInInstance())) or ""))
+
   add("")
   add("-- Post --")
-  add("Anhang-Felder: " .. BF.Mail:Slots() .. ", TurtleMail: " .. (BF.Mail:TurtleMailActive() and "ja" or "nein"))
+  add("Anhang-Felder: " .. BF.Mail:Slots() .. ", TurtleMail: " .. (BF.Mail:TurtleMailActive() and "ja" or "nein")
+    .. ", Paketversand: " .. (BF.Mail:PackMode() and "ja" or "nein"))
+  local O = BF.MailOrig or {}
+  add("Originale gemerkt: Pickup " .. tostring(O.pickup ~= nil) .. ", Click " .. tostring(O.click ~= nil)
+    .. ", SendMail " .. tostring(O.send ~= nil) .. ", ersetzt: " .. tostring(O.pickup ~= PickupContainerItem))
 
   local text = table.concat(out, "\n")
   BananaFarmDB.probe = text

@@ -42,7 +42,9 @@ Kein `#`, kein `%`-Operator (stattdessen `BF.mod`), kein `string.match/gmatch`, 
 | Speedrun.lua | Rundenstoppuhr, Rundenzeiten, Blockzeit je Session, Posten in den Chat (neu, 0.4.0) |
 | Sync.lua | Kopplung Farmmain/Twink, Abgleich Listen, AH-Preise, Resets mit dem Partner, Abgleich rund um den AH-Scan |
 | Probe.lua | `/bf probe`: prüft SuperWoW/Nampower/Bindings |
-| UI.lua | Hauptfenster (Reiter Listen, Einstellungen, Module), Leiste, Pop-ups, Einrichtungsfenster |
+| UI.lua | Hauptfenster (Reiter Listen, Einstellungen, Speedrun, Wünsche), Leiste, Pop-ups, Einrichtungsfenster, Auswahlmenü |
+| Donate.lua | Spenden: Vormerkung, Abo, Abfrage und Versand am Briefkasten, Spendenfenster (neu, 0.4.1) |
+| Media/Logo.png | Logo für das README (360x360), nicht vom Spiel genutzt |
 | Bindings.xml | Tastenbelegung `BANANAFARM_BAR` (Leiste ein-/ausblenden), Namen in Locale.lua |
 | Icon.tga | Addon-Icon (128x128, 32 Bit mit Alpha, aus dem Logo-PNG gebaut), Pfad `BF.ICON` |
 
@@ -54,6 +56,29 @@ SavedVariables: `BananaFarmDB` (Felder in `Core.lua`, `BF:InitDB`).
 - **Probe (erste Ausführung):** `InteractUnit` ist nil. Vorhanden: `LootSlot`, `GetNumLootItems`, `CloseLoot`, `SetAutoloot`, `GetItemStats`, `UnitPosition`, `SpellInfo`, `GetUnitData`, `GetUnitField`, `GetSpellRec`, `CombatLogAdd`, `TrackUnit`, `UntrackUnit`, `ImportFile`, `ExportFile`. Der Rest der Ausgabe (Stichwortlisten) wurde noch nicht ausgewertet.
 - **Relog-Bug Gold/h (behoben in 0.1.1, ungetestet):** Beim Laden waren Taschen und Gold noch leer. Der Snapshot war leer, die ganze Tasche zählte danach als Beute, und `t0` wurde ohne Sicherung der bisherigen Laufzeit überschrieben. Jetzt: Snapshot erst 3 s nach `PLAYER_ENTERING_WORLD`, Laufzeit wird bei `PLAYER_LOGOUT` gesichert.
 - **Roter Lua-Fehler im Chat** (`api.lua:458: GameTooltip doesn't have a "OnTooltipSetItem"`): Quelle unbekannt, vermutlich ein anderes Addon (nicht TurtleMail). Vollständigen Pfad aus der Fehlermeldung nachreichen.
+
+## Stand 0.4.1: Rückmeldungen von Chris (ungetestet im Spiel, nur simuliert)
+
+Abgestimmter Plan: g/h-Korrekturen, Pull-Zähler, Paketversand, Bedienung, Spenden, README. Simulation unter Lua 5.5 (lupa) mit nachgebauter WoW-API, kein Client. Lua-5.0-Fallen (Schleifen-Closures) kann sie nicht zeigen.
+
+- **Offline-Zeit (Session.lua):** Option `offlineTime` (Standard an). Beim Logout `s.logoutAt`, beim Laden zählt die Lücke bis `offlineMax` (900 s) zur Session. `Session:Heartbeat` schreibt alle 10 s `s.seen`. Fehlt der saubere Logout (Absturz, `s.t0` noch gesetzt), wird die Laufzeit bis `s.seen` nachgetragen; vorher ging sie verloren. Die Blockzeit im Speedrun nutzt `Session:Elapsed` und enthält damit kurze Relogs.
+- **Reparatur (Session.lua):** Option `repairCost` (Standard an). Hook auf `RepairAllItems` (3 s Fenster) und `InRepairMode()`. Negatives `PLAYER_MONEY` am offenen Händler in diesem Fenster zählt als `s.repair` und `s.run.repair`, `Value` und `RunValue` ziehen es ab. Einkäufe zählen nicht.
+- **Item-Wert:** bleibt live (abgestimmt: der Wert darf sich mit neuen Preisen anpassen).
+- **Preisprüfung (Vendor.lua, Prices.lua):** `BF:VendorTableValue` liefert den Tabellenwert ohne Gelerntes. Ein Item ohne `db.vcheck[id]` wird einzeln verkauft: Vorher wird auf offenes Gold gewartet (bis 6 x 0,3 s), danach bis 1,5 s auf `PLAYER_MONEY`. Der Stückpreis landet in `db.learned` (gilt überall) und `db.vcheck[id] = { real, tab, ts }`. Abschlussmeldung mit bis zu 5 Abweichungen, alle mit `/bf prices`, neu prüfen mit `/bf prices reset`. Kosten: eine Wartezeit je neuer Item-ID, danach keine.
+- **Pull-Zähler (Pulls.lua):** `Pulls:ScanPlates` geht im Kampf alle 0,5 s die Kinder von `WorldFrame` durch. `frame:GetName(1)` liefert mit SuperWoW auf Namensplaketten die GUID (unbestätigt). Gezählt wird, wer im Kampf und angreifbar ist und mich oder das Pet im Ziel hat (`UnitIsUnit(GUID.."target", ...)`). Kann der Client das nicht, reicht in einer Instanz "im Kampf und angreifbar". Probe zeigt beides (Abschnitt Namensplaketten).
+- **Paketversand (Mail.lua):** Beim Laden der Datei werden `PickupContainerItem`, `ClickSendMailItemButton`, `GetSendMailItem`, `SendMail`, `SetSendMailMoney`, `SetSendMailCOD` gemerkt (`BF.MailOrig`), bevor TurtleMail sie ersetzt (BananaFarm lädt alphabetisch vorher). `Mail:PackMode()`: mehr als ein Anhang-Feld, Originale vorhanden, `noPack` nicht gesetzt. Dann normaler Weg (`Step2`) mit den Originalen und `O.send` statt TurtleMail. Scheitert Anhängen oder Senden (`AttachFailed`, `MAIL_FAILED`), setzt `Mail:PackFallback` `noPack`, nimmt die Anhänge zurück und schickt ab `batchStart` einzeln weiter (TurtleMail-Weg). `noPack` gilt bis `MAIL_CLOSED`. `Collect` sortiert je Ziel nach Item-ID. Betreff: Itemname, bei mehreren "+n". Probe zeigt "Paketversand: ja/nein" und ob die Originale ersetzt wurden.
+- **Bedienung (UI.lua, Lists.lua):**
+  - Reiter Module entfällt. Die Module sind Abschnittsüberschriften in den Einstellungen (Haken = Modul an/aus). Ist ein Modul aus, werden seine Zeilen blass (Alpha 0,4), bleiben aber bedienbar. Das Einrichtungsfenster nutzt weiter `UI:ModuleChecks`. `ShowPage("modules")` leitet auf die Einstellungen.
+  - Einstellungen als ScrollFrame mit Rollbalken (Slider) und Mausrad, gegliedert: Allgemein, Session und Leiste, Listen und Sortierung, Händler, Post, Twink und Sync, Resets, Pull-Zähler, Speedrun, Wunschliste. Jede Option hat einen Tooltip (`<KEY>_TT`). Unter Allgemein: Sprache, So geht's, Einrichtung, Probe, BananaFarm unterstützen.
+  - Session-Knopf "Session starten/stoppen" rechts in der Reiterzeile (grün/rot), zusätzlich zur Leiste.
+  - Listen: Namen "Nie anfassen" (I) und "Behalten" (K), farbige Reiter-Tooltips, Beschreibungszeile unter den Reitern (`LISTDESC_*`), farbige V/M/I/K-Knöpfe (18 px) mit Erklärung. 17 Zeilen statt 18.
+  - Mailziel einer Zeile: Klick öffnet `UI:ShowPicker` (bei mindestens zwei Zielen), Rechtsklick schaltet wie bisher zurück.
+  - Alt+Klick in der Tasche öffnet das Zuordnungs-Pop-up (`UI:ShowAssign(id, true)`) statt still auf die gewählte Liste zu legen. Das Pop-up hat jetzt auch "Behalten", zeigt die aktuelle Liste und "Abbrechen". Ein offenes Pop-up aus der Warteschlange wird zurückgestellt.
+  - Leiste: Tooltips an Session-, Stoppuhr- und Reset-Knopf.
+  - Einrichtung: Nach Twink und Mailchars folgt "So funktioniert BananaFarm" (3 Schritte, Knopf "Los geht's"), auch über "So geht's" in den Einstellungen.
+- **Spenden (Donate.lua):** Ziel `Bareg` auf `N'Zoth` (Realmvergleich ohne Apostroph, Leerzeichen, Groß/klein). Anderer Realm oder man ist selbst Bareg: Fenster zeigt nur den Namen zum Kopieren. Sonst: einmalig vormerken, Abo pro Session (`Session:Stop`) oder pro Runde (`Session:NewRun`, nur in laufender Session). `db.donate = { pending, total, aboMode, aboAmount }`. Am Briefkasten 1,5 s nach `MAIL_SHOW` fragt `UI:Confirm("donate")`, erst nach der Mailliste (wartet bis 2 Minuten). Ja: Brief ohne Anhang mit Geld über die Originale, Betreff `DONATE_SUBJECT`. Höchstens 100g pro Brief, Rest bleibt vorgemerkt. Nein: beim nächsten Briefkasten wieder. Liegen Anhänge im Postfenster, wird nichts gesendet. Standard: nichts vorgemerkt, kein Abo.
+- **README:** Logo (`Media/Logo.png`), Erste Schritte, alle Funktionen nach Bereichen, Installation, Befehle.
+- **Getestet nur simuliert:** Laden, alle Reiter, Einrichtung bis "Los geht's", Module aus/blass, Beute, Reparaturabzug, Preisprüfung (37c statt 2s50 aus der Tabelle), Relog mit 120 s, Pause über 15 min, Absturz, Paket (3 Stapel, 1 Brief), Rückfall auf TurtleMail einzeln, Spende vormerken, Abo pro Runde, Abfrage und Versand, anderer Realm, 12 Mobs über Plaketten, Alt+Klick-Pop-up. Layout (Einstellungen mit Rollbalken, Knöpfe, Pop-up 440 breit) nicht gesehen, bitte Screenshots.
 
 ## Stand 0.4.0, Phase 7: Rückmeldungen nach Screenshots und Ergänzungen (ungetestet im Spiel)
 

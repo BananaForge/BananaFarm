@@ -169,7 +169,7 @@ BF:On("PLAYER_REGEN_ENABLED", function()
 end)
 
 -- ------------------------------------------------------------
--- Alt+Klick auf ein Item in der Tasche: auf die gerade gewaehlte Liste
+-- Alt+Klick auf ein Item in der Tasche: Zuordnungs-Pop-up oeffnen
 -- ------------------------------------------------------------
 local origClick
 function Lists:HookBags()
@@ -179,10 +179,10 @@ function Lists:HookBags()
     if BF.ready and BananaFarmDB.altClick and BF:Enabled("items") and button == "LeftButton" and IsAltKeyDown()
       and not IsShiftKeyDown() and not IsControlKeyDown() and this and this.GetParent then
       local id = BF.ItemID(GetContainerItemLink(this:GetParent():GetID(), this:GetID()))
-      if id then
-        local list = (BF.UI and BF.UI.sel) or "V"
-        Lists:Set(id, list)
-        BF:Print(string.format(BF.T("MSG_ASSIGNED"), BF:ColoredName(id), BF.T("LIST_" .. list)))
+      -- Alt+Klick oeffnet das Zuordnungs-Pop-up mit allen Listen (frueher: still auf die im Fenster
+      -- gewaehlte Liste, die man bei geschlossenem Fenster nicht sah)
+      if id and BF.UI then
+        BF.UI:ShowAssign(id, true)
         return
       end
     end

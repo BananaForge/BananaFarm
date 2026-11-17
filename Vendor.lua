@@ -1,6 +1,9 @@
 -- BananaFarm Haendler: beim Oeffnen eines Haendlers (z. B. Repairbot) die Vendorliste verkaufen.
 -- Ein Stapel alle 0,15 s per UseContainerItem; danach Abgleich: was der Haendler nicht nimmt, wird gemerkt.
 -- Nebenbei lernt das Addon den echten Stueckpreis (Gold-Differenz pro Verkauf).
+-- Preispruefung: Jede Item-ID wird beim ersten Verkauf einmal allein verkauft, bis das Gold da ist.
+-- Der erhaltene Stueckpreis wird mit der Tabelle verglichen und gilt ab dann ueberall (Tracker,
+-- Listen, Sortierregel). Geprueft wird jede ID nur einmal (db.vcheck), danach kostet es nichts mehr.
 
 local BF = BananaFarm
 local getn = table.getn
@@ -32,7 +35,8 @@ function Vendor:Start()
   end
   local list = self:Collect()
   if getn(list) == 0 then return end
-  self.run = { list = list, idx = 1, tried = {}, money0 = GetMoney(), last = GetMoney(), pending = 0 }
+  self.run = { list = list, idx = 1, tried = {}, money0 = GetMoney(), last = GetMoney(), pending = 0,
+    checked = {}, nCheck = 0, diffs = {} }
   self:Step()
 end
 
@@ -50,6 +54,14 @@ function Vendor:Step()
   local id = BF.ItemID(GetContainerItemLink(p.bag, p.slot))
   local _, count = GetContainerItemInfo(p.bag, p.slot)
   if id == p.id and (count or 1) == p.c and BF.Lists:Eff(id) == "V" then
+    -- Preispruefung braucht einen Verkauf ohne offenes Gold davor: kurz warten (hoechstens 6 x 0,3 s)
+    if not BananaFarmDB.vcheck[id] and not r.checked[id] and r.pending > 0 and (r.pw or 0) < 6 then
+      r.pw = (r.pw or 0) + 1
+      r.idx = r.idx - 1
+      BF:After(0.3, function() Vendor:Step() end, "vendorstep")
+      return
+    end
+    r.pw = 0
     if CursorHasItem() then ClearCursor() end
     self.selling = true
     UseContainerItem(p.bag, p.slot)
@@ -57,8 +69,63 @@ function Vendor:Step()
     table.insert(r.tried, p)
     r.pending = r.pending + 1
     r.lastSold = p
+    -- noch nie geprueft: auf das Gold dieses einen Verkaufs warten (hoechstens 1,5 s)
+    if not BananaFarmDB.vcheck[id] and not r.checked[id] then
+      r.checked[id] = true
+      r.waitCheck = p
+      BF:After(1.5, function()
+        if Vendor.run then Vendor.run.waitCheck = nil end
+        Vendor:Step()
+      end, "vendorstep")
+      return
+    end
   end
   BF:After(0.15, function() Vendor:Step() end, "vendorstep")
+end
+
+-- Ergebnis der Preispruefung fuer ein Item festhalten
+function Vendor:Checked(p, unit)
+  local r = self.run
+  local db = BananaFarmDB
+  local tab = BF:VendorTableValue(p.id)
+  db.vcheck[p.id] = { real = unit, tab = tab or 0, ts = time() }
+  r.nCheck = r.nCheck + 1
+  if tab ~= unit then table.insert(r.diffs, p.id) end
+end
+
+-- Abweichungen der Preispruefung in den Chat (max = hoechstens so viele Zeilen)
+function Vendor:PrintDiffs(ids, max)
+  local n = getn(ids)
+  for i = 1, n do
+    if max and i > max then
+      BF:Print(string.format(BF.T("MSG_VCHECK_MORE"), n - max))
+      return
+    end
+    local c = BananaFarmDB.vcheck[ids[i]]
+    if c then
+      local tab = (c.tab and c.tab > 0) and BF.Money(c.tab) or BF.T("UNKNOWN")
+      BF:Print(string.format(BF.T("MSG_VCHECK_DIFF"), BF:ColoredName(ids[i]), tab, BF.Money(c.real)))
+    end
+  end
+end
+
+-- /bf prices: alle Abweichungen anzeigen. /bf prices reset: alles neu pruefen.
+function Vendor:Command(rest)
+  local db = BananaFarmDB
+  if string.lower(BF.Trim(rest or "")) == "reset" then
+    db.vcheck = {}
+    db.learned = {}
+    BF:Print(BF.T("MSG_VCHECK_RESET"))
+    return
+  end
+  local ids, n = {}, 0
+  for id, c in pairs(db.vcheck) do
+    n = n + 1
+    if c.tab ~= c.real then table.insert(ids, id) end
+  end
+  table.sort(ids)
+  BF:Print(string.format(BF.T("MSG_VCHECK_SUM"), n, getn(ids)))
+  self:PrintDiffs(ids)
 end
 
 -- Stueckpreis lernen: nur wenn genau ein Verkauf zwischen zwei Gold-Aenderungen lag
@@ -71,9 +138,17 @@ BF:On("PLAYER_MONEY", function()
   if r.pending == 1 and r.lastSold and delta > 0 then
     local p = r.lastSold
     local unit = floor(delta / p.c)
-    if unit > 0 and unit * p.c == delta then BananaFarmDB.learned[p.id] = unit end
+    if unit > 0 and unit * p.c == delta then
+      BananaFarmDB.learned[p.id] = unit
+      if r.waitCheck == p then Vendor:Checked(p, unit) end
+    end
   end
   r.pending = 0
+  -- Preispruefung fertig: sofort weiterverkaufen
+  if r.waitCheck then
+    r.waitCheck = nil
+    BF:After(0.15, function() Vendor:Step() end, "vendorstep")
+  end
 end)
 
 function Vendor:Finish()
@@ -102,6 +177,10 @@ function Vendor:Finish()
   local income = GetMoney() - r.money0
   if sold > 0 then
     BF:Print(string.format(BF.T("MSG_SOLD"), sold, items, BF.Money(income)))
+  end
+  if r.nCheck > 0 then
+    BF:Print(string.format(BF.T("MSG_VCHECK_SUM"), r.nCheck, getn(r.diffs)))
+    self:PrintDiffs(r.diffs, 5)
   end
   if BF.UI then BF.UI:Refresh() end
 end

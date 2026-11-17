@@ -9,7 +9,7 @@
 BananaFarm = {}
 local BF = BananaFarm
 
-BF.VERSION = "0.4.0"
+BF.VERSION = "0.4.1"
 BF.ICON = "Interface\\AddOns\\BananaFarm\\Icon"
 
 local getn = table.getn
@@ -283,6 +283,9 @@ BF.DEFAULTS = {
   autoSync = true,     -- bei Login und vor dem Logout mit dem Partner abgleichen
   syncPeer = "",       -- Sync-Partner (leer: Bankalt)
   srChannel = "PARTY", -- Speedrun: Kanal fuers Posten (PARTY, RAID, GUILD, SAY)
+  offlineTime = true,  -- Session-Uhr laeuft offline weiter (Relog beim Reset), Luecken bis offlineMax
+  offlineMax = 900,    -- laengere Pausen (Sekunden) zaehlen nicht, z. B. ueber Nacht ausgeloggt
+  repairCost = true,   -- Reparaturkosten in der Session vom Wert abziehen
 }
 
 function BF:InitDB()
@@ -299,6 +302,8 @@ function BF:InitDB()
   db.ah = db.ah or {}             -- [id] = { u = Kupfer pro Stueck, ts = Zeit, n = Stichproben }
   db.learned = db.learned or {}   -- [id] = beim Haendler beobachteter Stueckpreis
   db.noSell = db.noSell or {}     -- [id] = true: der Haendler nimmt es nicht
+  db.vcheck = db.vcheck or {}     -- [id] = { real, tab, ts }: Preispruefung beim Haendler (einmal je ID)
+  db.donate = db.donate or {}     -- Spenden: pending (Kupfer), aboMode ("session"|"run"|nil), aboAmount
   db.resets = db.resets or {}     -- Zeitstempel (time()) der gezaehlten Instanz-Resets, max. 1 Stunde alt
   db.manualTs = db.manualTs or {} -- [id] = Zeitpunkt der letzten Zuordnung von Hand (fuer den Sync)
   db.sync = db.sync or { last = {}, since = {} }
@@ -458,8 +463,12 @@ SlashCmdList["BANANAFARM"] = function(msg)
     BF.Sync:Command(rest)
   elseif cmd == "wish" then
     BF.Wish:Command(rest)
+  elseif cmd == "prices" then
+    BF.Vendor:Command(rest)
+  elseif cmd == "donate" then
+    BF.UI:ShowDonate()
   else
-    for i = 1, 12 do BF:Print(BF.T("HELP_" .. i)) end
+    for i = 1, 14 do BF:Print(BF.T("HELP_" .. i)) end
   end
 end
 

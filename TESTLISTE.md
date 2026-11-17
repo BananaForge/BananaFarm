@@ -128,3 +128,38 @@ Fehler bitte im Wortlaut notieren (Chatzeilen, Lua-Fehler mit Dateiname und Zeil
 - [ ] Twink resettet, Farmchar außerhalb der Instanz: Erscheint der Reset sofort beim Farmchar ("Reset durch den Partner", Resets 1/5, neuer Run), ohne `/bf sync`?
 - [ ] Beide bekommen die Reset-Meldung des Spiels: Wird der Reset nicht doppelt gezählt?
 - [ ] Gebietswechsel und Instanz betreten oder verlassen: Läuft danach ein Abgleich (Chatzeile nur, wenn sich etwas geändert hat)?
+
+## 0.4.1: neu zu testen
+
+### Gold pro Stunde
+- [ ] Session läuft, ausloggen, 1 bis 2 Minuten warten, einloggen: Läuft die Dauer um die Offline-Zeit weiter (kein Sprung zurück, kein Stillstand)?
+- [ ] Am Repairbot reparieren (Alles reparieren und einzelne Teile): Sinkt "Session" und "Run" um die Reparaturkosten?
+- [ ] Etwas beim Händler kaufen: Ändert sich der Session-Wert NICHT?
+
+### Preisprüfung
+- [ ] Händler öffnen mit neuen Items auf der Vendorliste: Kommt die Chatzeile "Preisprüfung: x Items geprüft, y zahlt der Händler anders"? Bitte Wortlaut der Abweichungen notieren (Grays/Trash aus DM).
+- [ ] `/bf prices`: zeigt alle Abweichungen. Stimmt die Spalte Händler in der Vendorliste danach mit dem Gold überein?
+- [ ] Zweiter Händlerbesuch mit denselben Items: Verkauf wieder schnell (keine Pausen)?
+
+### Paketversand
+- [ ] Am Briefkasten mit mehreren Mail-Items: Chatzeile "Paketversand: bis zu n Stapel pro Brief"? Kommen beim Bankalt Briefe mit mehreren Anhängen an (Betreff: Itemname +n)?
+- [ ] Falls "Paketversand klappt hier nicht, schicke einzeln weiter" erscheint: Kommen dann alle Items einzeln an? Bitte `/bf probe` (Abschnitt Post) schicken.
+
+### Pull-Zähler
+- [ ] Namensplaketten an (V), Hunter-Pull: Zählt der Zähler auch Mobs, die nur hinterherlaufen? Weicht die Zahl von der Wirklichkeit ab, um wie viel?
+- [ ] `/bf probe` mit einem Mob im Ziel, der dich angreift: Abschnitt Namensplaketten schicken.
+
+### Bedienung
+- [ ] Einstellungen: Lassen sie sich mit Mausrad und Rollbalken bis ganz unten scrollen? Werden Abschnitte blass, wenn das Modul aus ist? Bitte Screenshot.
+- [ ] Tooltips über jeder Option?
+- [ ] Knopf "Session starten" rechts in der Reiterzeile: überlappt nichts?
+- [ ] Listen: farbige Knöpfe, Beschreibungszeile, nichts überlappt (Händler- und AH-Spalte)?
+- [ ] Mailliste mit zwei oder mehr Mailzielen: Klick auf das Ziel öffnet die Auswahl?
+- [ ] Alt+Klick in der Tasche: Pop-up mit fünf Knöpfen (Vendor, Mail, Nie anfassen, Behalten, Abbrechen)?
+- [ ] Einrichtung (Einstellungen, Einrichtung): Am Ende kommt "So funktioniert BananaFarm"?
+
+### Spenden
+- [ ] `/bf donate` auf N'Zoth: Fenster mit Einmalig und Abo. 1 Gold vormerken, Briefkasten öffnen: Abfrage "1g an Bareg spenden?" Bei Ja kommt der Brief bei Bareg an (Betreff "Spende für Addon-Entwicklung BananaFarm")?
+- [ ] Abfrage mit Nein: Beim nächsten Briefkasten wird wieder gefragt?
+- [ ] Abo pro Runde: Nach einem Reset steigt "Vorgemerkt" um den Betrag?
+- [ ] Auf einem Char eines anderen Realms: Fenster zeigt nur den Namen zum Kopieren?

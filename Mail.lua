@@ -12,6 +12,21 @@ BF.POSTAGE = 30 -- Kupfer pro Anhang
 BF.TM_MAX = 21 -- so viele Anhaenge fasst das TurtleMail-Sendefenster
 BF.TM_BATCH = 1 -- Briefe je TurtleMail-Durchgang: bei mehreren in Folge scheiterte ab dem 2. Brief der Versand
 
+-- Paketversand (mehrere Stapel in einem Brief): TurtleMail ersetzt die Post-Funktionen des Spiels und
+-- schickt jeden Anhang als eigenen Brief. BananaFarm wird vor TurtleMail geladen (alphabetisch),
+-- deshalb merken wir uns die Originale hier beim Laden der Datei und packen damit selbst.
+-- Klappt das Anhaengen oder Senden nicht, faellt der Versand fuer diesen Briefkasten auf
+-- den Einzelversand zurueck (Mail.noPack).
+local O = {
+  pickup = PickupContainerItem,
+  click = ClickSendMailItemButton,
+  getItem = GetSendMailItem,
+  send = SendMail,
+  setMoney = SetSendMailMoney,
+  setCOD = SetSendMailCOD,
+}
+BF.MailOrig = O
+
 -- ------------------------------------------------------------
 -- Mailziele: weitere Ziele (db.mailTargets, Reihenfolge = Rang, das erste ist das Standardziel)
 -- und die Zuordnung je Item (db.mailTarget[id] = Name). Beides wird nicht gesynct.
@@ -101,7 +116,7 @@ function Mail:Letters(list)
   end
   local n = 0
   for i = 1, getn(order) do
-    if self:TurtleMailActive() then
+    if self:TurtleMailActive() and not self:PackMode() then
       n = n + per[order[i]]
     else
       n = n + math.ceil(per[order[i]] / self:Slots())
@@ -145,20 +160,40 @@ function Mail:TurtleMailActive()
     and type(TurtleMail.sendmail_attached) == "function" and type(TurtleMail.sendmail_set_attachment) == "function"
 end
 
+-- Pakete moeglich? Das Postfenster hat mehrere Anhang-Felder, die Originale sind da und
+-- an diesem Briefkasten ist der Paketversand noch nicht gescheitert.
+function Mail:PackMode()
+  if self.noPack then return false end
+  return self:Slots() > 1 and O.pickup ~= nil and O.click ~= nil and O.send ~= nil
+end
+
+-- Original-Funktion, solange Pakete laufen, sonst die (evtl. von TurtleMail ersetzte) aktuelle
+local function fn(name, cur)
+  if Mail:PackMode() and O[name] then return O[name] end
+  return cur
+end
+
 local function tryClick(index)
-  if not ClickSendMailItemButton then return end
-  if index then pcall(ClickSendMailItemButton, index) else pcall(ClickSendMailItemButton) end
+  local click = fn("click", ClickSendMailItemButton)
+  if not click then return end
+  if index then pcall(click, index) else pcall(click) end
 end
 
 local function mailHasAttachment(index)
-  if not GetSendMailItem then return nil end
-  local ok, name = pcall(GetSendMailItem, index)
+  local get = fn("getItem", GetSendMailItem)
+  if not get then return nil end
+  local ok, name = pcall(get, index)
   if ok and name and name ~= "" then return true end
   if index then
-    ok, name = pcall(GetSendMailItem)
+    ok, name = pcall(get)
     if ok and name and name ~= "" then return true end
   end
   return false
+end
+
+-- TurtleMail-Weg nur, wenn keine Pakete moeglich sind
+function Mail:UseTurtle()
+  return self:TurtleMailActive() and not self:PackMode()
 end
 
 -- Stapel der Mailliste in den Taschen. Seelengebundenes laesst sich nicht verschicken und bleibt liegen.
@@ -189,9 +224,15 @@ function Mail:Collect()
     end
     table.insert(groups[k], list[i])
   end
+  -- je Ziel ein Paket, darin gleiche Items nebeneinander
   local sorted = {}
   for i = 1, getn(order) do
     local g = groups[order[i]]
+    table.sort(g, function(a, b)
+      if a.id ~= b.id then return a.id < b.id end
+      if a.bag ~= b.bag then return a.bag < b.bag end
+      return a.slot < b.slot
+    end)
     for j = 1, getn(g) do table.insert(sorted, g[j]) end
   end
   return sorted, self_, none
@@ -220,6 +261,7 @@ function Mail:Start()
     return
   end
   self.run = { list = list, idx = 1, stacks = 0, mails = 0, to = list[1].to, tally = {}, order = {} }
+  if self:PackMode() then BF:Print(string.format(BF.T("MSG_MAIL_PACK"), self:Slots())) end
   BF:Print(string.format(BF.T("MSG_MAIL_START"), getn(list), self:NamesOf(list)))
   self:Next()
 end
@@ -250,7 +292,7 @@ function Mail:Next()
   -- erst an, wenn dieser Reiter offen ist, und braucht dafuer einen Moment.
   if MailFrameTab_OnClick then pcall(MailFrameTab_OnClick, 2) end
   BF:After(0.3, function()
-    if Mail:TurtleMailActive() then Mail:TurtleAttach() else Mail:Step2() end
+    if Mail:UseTurtle() then Mail:TurtleAttach() else Mail:Step2() end
   end, "mailstep")
 end
 
@@ -315,8 +357,9 @@ end
 -- haengt einen Stapel an: true (liegt im Brief), "wait" (spaeter pruefen) oder false
 function Mail:Attach(e, index, stage)
   if CursorHasItem() then ClearCursor() end
-  if stage ~= 2 and ClickSendMailItemButton then
-    PickupContainerItem(e.bag, e.slot)
+  local pickup = fn("pickup", PickupContainerItem)
+  if stage ~= 2 and fn("click", ClickSendMailItemButton) then
+    pickup(e.bag, e.slot)
     if not CursorHasItem() then return false end
     -- genau ein Klick: manche Fenster uebernehmen den Anhang erst einen Moment spaeter
     if self:Slots() > 1 then tryClick(index) else tryClick(nil) end
@@ -336,7 +379,7 @@ end
 
 function Mail:AttachedNow(e, index)
   -- TurtleMail haelt die Anhaenge in einer eigenen Liste; GetSendMailItem sieht sie nicht
-  if self:TurtleMailActive() then
+  if self:UseTurtle() then
     local ok, res = pcall(TurtleMail.sendmail_attached, e.bag, e.slot)
     return ok and res and true or false
   end
@@ -354,6 +397,7 @@ function Mail:Step2()
   if not r then return end
   if not BF.mailOpen then return self:Stop("ERR_MAIL_CLOSED") end
   r.stage2 = nil
+  r.batchStart = r.idx
   local slots = self:Slots()
   -- nicht mehr Anhaenge, als das Porto hergibt
   local afford = math.floor(GetMoney() / BF.POSTAGE)
@@ -397,11 +441,12 @@ function Mail:Verify()
   local r = self.run
   if not r or not r.batch then return end
   local missing = {}
+  local turtle = self:UseTurtle()
   for i = 1, getn(r.batch) do
     local ok = self:AttachedNow(r.batch[i], i)
     -- erster Weg: ist der Cursor nach dem Klick leer, hat das Fenster das Item genommen,
     -- auch wenn es sich per Abfrage nicht meldet
-    if not ok and not r.stage2 and not CursorHasItem() and not self:TurtleMailActive() then ok = true end
+    if not ok and not r.stage2 and not CursorHasItem() and not turtle then ok = true end
     if not ok then table.insert(missing, i) end
   end
   if getn(missing) == 0 then return self:Send() end
@@ -420,16 +465,33 @@ end
 
 function Mail:AttachFailed()
   self:ClearAttachments()
+  if self:PackFallback() then return end
   self:Stop("ERR_ATTACH_FAILED")
+end
+
+-- Paket gescheitert: einmal auf den Einzelversand umschalten und dieselben Stapel neu versuchen.
+-- true, wenn der Versand weiterlaeuft.
+function Mail:PackFallback()
+  local r = self.run
+  if not r or not self:PackMode() then return false end
+  self.noPack = true
+  r.sending = false
+  r.batch = nil
+  if CursorHasItem() then ClearCursor() end
+  r.idx = r.batchStart or r.idx
+  BF:Print(BF.T("MSG_MAIL_NOPACK"))
+  BF:Cancel("mailtimeout")
+  BF:After(1.0, function() Mail:Next() end, "mailstep")
+  return true
 end
 
 -- Anhaenge zurueck in die Taschen
 function Mail:ClearAttachments()
-  if self:TurtleMailActive() then
+  if self:UseTurtle() then
     if TurtleMail.sendmail_clear then pcall(TurtleMail.sendmail_clear) end
     return
   end
-  if not ClickSendMailItemButton then return end
+  if not fn("click", ClickSendMailItemButton) then return end
   for i = 1, self:Slots() do
     tryClick(self:Slots() > 1 and i or nil)
     if CursorHasItem() then ClearCursor() end
@@ -440,6 +502,12 @@ function Mail:Send()
   local r = self.run
   if not r or not r.batch then return end
   local subject = "BananaFarm (" .. getn(r.batch) .. ")"
+  local first = r.batch[1] and BF:ItemInfo(r.batch[1].id)
+  if first and getn(r.batch) > 1 then
+    subject = first .. " +" .. (getn(r.batch) - 1)
+  elseif first then
+    subject = first
+  end
   if SendMailNameEditBox then
     -- TurtleMail ueberschreibt SetText und ignoriert es, solange es sich einen Empfaenger gemerkt hat
     if SendMailNameEditBox._SetText then SendMailNameEditBox:_SetText(r.to) else SendMailNameEditBox:SetText(r.to) end
@@ -450,6 +518,13 @@ function Mail:Send()
   BF:After(15, function()
     if Mail.run and Mail.run.sending then Mail:Fail("ERR_MAIL_TIMEOUT") end
   end, "mailtimeout")
+  -- Paket: direkt mit der Original-Funktion senden, ohne dass TurtleMail seine eigene Liste schickt
+  if self:PackMode() then
+    if O.setMoney then pcall(O.setMoney, 0) end
+    if O.setCOD then pcall(O.setCOD, 0) end
+    if not pcall(O.send, r.to, subject, "") then self:Fail("ERR_MAIL_FAILED") end
+    return
+  end
   -- kein Geld, keine Nachnahme
   if SendMailMoney and MoneyInputFrame_SetCopper then
     pcall(MoneyInputFrame_SetCopper, SendMailMoney, 0)
@@ -472,6 +547,10 @@ function Mail:Fail(errKey)
     TurtleMail.sendmail_state = nil
   end
   self:ClearAttachments()
+  if errKey == "ERR_MAIL_FAILED" and self:PackFallback() then
+    self.lastErr = nil
+    return
+  end
   local detail = self.lastErr
   self.lastErr = nil
   self:Stop(errKey)
@@ -519,6 +598,8 @@ BF:On("MAIL_FAILED", function()
 end)
 
 BF:On("MAIL_CLOSED", function()
+  -- beim naechsten Briefkasten Pakete wieder versuchen
+  Mail.noPack = nil
   if BF.UI then BF.UI:HideConfirm("mail") end
   if Mail.run then Mail:Stop("ERR_MAIL_CLOSED") end
 end)
