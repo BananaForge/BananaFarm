@@ -1,7 +1,9 @@
 -- BananaFarm Speedrun (0.5.0): Rundenstoppuhr, Runden und Durchgaenge.
 --
 -- Runde = ein Instanz-Durchlauf. Die Stoppuhr laeuft unabhaengig von der Session-Uhr.
---   Start: von Hand oder automatisch beim Betreten von Duesterbruch (Option srAutoStart).
+--   Start: von Hand oder automatisch beim Betreten von Duesterbruch (Option srAutoStart, erkennt
+--   "Dire Maul" und "Duesterbruch"). Ist der Autostart aus, startet die erste Runde zusammen mit
+--   der Session (Session:Start), weitere Runden von Hand.
 --   Ende (Runde wird gespeichert): Stopp-Knopf, Instanz-Reset (automatisch, auch wenn der Partner
 --   resettet) oder Logout. Nach einem Instanz-Reset steht die Uhr wieder auf 0.
 --   Reset-Knopf: verwirft die laufende Zeit, ohne zu speichern (Fehlstart).
@@ -224,6 +226,15 @@ function SR:CheckZone()
   if sw.running or (sw.elapsed or 0) > 0 then return end
   self:Start()
   BF:Print(BF.T("MSG_SR_AUTOSTART"))
+end
+
+-- Autostart aus: die erste Runde startet zusammen mit der Session (wenn die Uhr auf 0 steht)
+function SR:OnSessionStart()
+  if not BF:Enabled("speedrun") or BananaFarmDB.srAutoStart then return end
+  local sw = BananaFarmDB.speedrun.sw
+  if sw.running or (sw.elapsed or 0) > 0 then return end
+  self:Start()
+  BF:Print(BF.T("MSG_SR_SESSIONSTART"))
 end
 
 BF:On("ZONE_CHANGED_NEW_AREA", function() BF:After(1, function() SR:CheckZone() end, "srzone") end)

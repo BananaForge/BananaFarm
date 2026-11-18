@@ -59,6 +59,10 @@ SavedVariables: `BananaFarmDB` (Felder in `Core.lua`, `BF:InitDB`).
 - **Relog-Bug Gold/h (behoben in 0.1.1, ungetestet):** Beim Laden waren Taschen und Gold noch leer. Der Snapshot war leer, die ganze Tasche zählte danach als Beute, und `t0` wurde ohne Sicherung der bisherigen Laufzeit überschrieben. Jetzt: Snapshot erst 3 s nach `PLAYER_ENTERING_WORLD`, Laufzeit wird bei `PLAYER_LOGOUT` gesichert.
 - **Roter Lua-Fehler im Chat** (`api.lua:458: GameTooltip doesn't have a "OnTooltipSetItem"`): Quelle unbekannt, vermutlich ein anderes Addon (nicht TurtleMail). Vollständigen Pfad aus der Fehlermeldung nachreichen.
 
+## Stand 0.5.1
+
+- **Autostart der Stoppuhr:** erkennt "Dire Maul" (englischer Client) und "Düsterbruch" (deutscher Client), weiter abschaltbar (`srAutoStart`). Ist er aus, startet `SR:OnSessionStart` (aus `Session:Start`) die erste Runde zusammen mit der Session, sofern die Uhr auf 0 steht. Weitere Runden startet man von Hand in der Leiste.
+
 ## Stand 0.5.0: Rückmeldungen von Chris, Antworten vom 18.11. (ungetestet im Spiel, nur simuliert)
 
 - **Spenden, Server-Erkennung (Donate.lua):** Ursache war sehr wahrscheinlich der Test auf Bareg selbst (`IsSelf` zeigte die Ansicht "anderer Server"). Jetzt eigener Text `DONATE_SELF` auf Bareg. Serververgleich nur über Buchstaben und Ziffern, "nzoth" muss im Namen vorkommen (typografische Apostrophe und Zusätze stören nicht). Das Fenster zeigt den erkannten Server.

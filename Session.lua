@@ -130,6 +130,7 @@ function Session:Start()
     for id in pairs(self.snap) do BF.Lists:Seen(id) end
   end
   BF:Print(BF.T("MSG_SESSION_START"))
+  if BF.Speedrun then BF.Speedrun:OnSessionStart() end
   if BF.UI then BF.UI:Refresh() end
 end
 

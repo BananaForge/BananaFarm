@@ -339,8 +339,8 @@ BF.L.deDE = {
   MOD_CHAMP = "Lasher Championships (Bestenliste mit der Gilde)",
   SEC_CHAMP = "Lasher Championships",
   INFO_CHAMP = "Bestenlisten mit deiner Gilde im Reiter Speedrun, Wochensieger am Sonntag.",
-  CHK_SRAUTO = "Stoppuhr beim Betreten von Düsterbruch automatisch starten",
-  CHK_SRAUTO_TT = "Die Rundenstoppuhr startet, sobald du die Instanz Düsterbruch betrittst und sie auf 0 steht.",
+  CHK_SRAUTO = "Stoppuhr beim Betreten von Düsterbruch (Dire Maul) automatisch starten",
+  CHK_SRAUTO_TT = "An: Die Rundenstoppuhr startet, sobald du Düsterbruch betrittst und sie auf 0 steht (deutscher und englischer Client). Aus: Die erste Runde startet zusammen mit der Session, weitere Runden startest du in der Leiste.",
   CHK_CHAMPGOLD = "Mein Gold in den Bestenlisten zeigen",
   CHK_CHAMPGOLD_TT = "Teilt das Gold deiner Durchgänge mit der Gilde. Ohne Haken erscheinst du nicht in der Gold-Liste.",
   MSG_SR_DISCARD = "Laufende Rundenzeit verworfen.",
@@ -392,6 +392,7 @@ BF.L.deDE = {
   CHAMP_INFO = "%d Spieler mit Zeiten",
   CHAMP_WEEK = "Wochensieger %s bis %s",
   MSG_CHAMP_NONE = "Diese Woche gibt es noch keine Durchgänge.",
+  MSG_SR_SESSIONSTART = "Session gestartet: Rundenstoppuhr läuft (Autostart in Düsterbruch ist aus).",
 }
 
 BF.L.enUS = {
@@ -730,7 +731,7 @@ BF.L.enUS = {
   SEC_CHAMP = "Lasher Championships",
   INFO_CHAMP = "Leaderboards with your guild in the Speedrun tab, weekly winners on Sunday.",
   CHK_SRAUTO = "Start the stopwatch automatically when entering Dire Maul",
-  CHK_SRAUTO_TT = "The lap stopwatch starts as soon as you enter the Dire Maul instance and it is at 0.",
+  CHK_SRAUTO_TT = "On: the lap stopwatch starts as soon as you enter Dire Maul and it is at 0 (English and German client). Off: the first lap starts together with the session, further laps you start in the bar.",
   CHK_CHAMPGOLD = "Show my gold in the leaderboards",
   CHK_CHAMPGOLD_TT = "Shares the gold of your heats with the guild. Unchecked, you do not appear in the gold list.",
   MSG_SR_DISCARD = "Running lap time discarded.",
@@ -782,6 +783,7 @@ BF.L.enUS = {
   CHAMP_INFO = "%d players with times",
   CHAMP_WEEK = "Weekly winners %s to %s",
   MSG_CHAMP_NONE = "No heats this week yet.",
+  MSG_SR_SESSIONSTART = "Session started: lap stopwatch running (autostart in Dire Maul is off).",
 }
 
 function BF.Lang()
