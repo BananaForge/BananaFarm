@@ -1,4 +1,5 @@
--- BananaFarm Listen: Vendor (V), Mail (M), Ignorieren (I), Behalten (K), Unsortiert (U).
+-- BananaFarm Listen: Vendor (V), Mail (M), Nie anfassen (I), Unsortiert (U).
+-- Die fruehere Liste "Behalten" (K) gibt es seit 0.5.0 nicht mehr, ihre Eintraege stehen auf I.
 -- Eine Zuordnung von Hand schlaegt immer die Automatik. Unsortierte Items bleiben in den Taschen.
 
 local BF = BananaFarm
@@ -7,7 +8,7 @@ local getn = table.getn
 BF.Lists = { queue = {} }
 local Lists = BF.Lists
 
-BF.LIST_KEYS = { "V", "M", "I", "K", "U" }
+BF.LIST_KEYS = { "V", "M", "I", "U" }
 
 -- "V" | "M" | "I" | "U" | nil (dem Addon unbekannt)
 function Lists:Get(id)
@@ -22,21 +23,20 @@ function Lists:IsManual(id)
   return BananaFarmDB.manual[id] ~= nil
 end
 
--- Wirksame Liste: "Behalten" (K) schuetzt nur, solange die Session laeuft (und die Option an ist).
--- Sonst entscheidet die Standardregel, als stuende das Item nicht auf K.
+-- Wirksame Liste (frueher mit Sonderfall "Behalten"; ein altes K zaehlt wie I)
 function Lists:Eff(id)
   local l = self:Get(id)
-  if l ~= "K" then return l end
-  if BananaFarmDB.keepProtect and BF.Session and BF.Session:Running() then return "K" end
-  return BananaFarmDB.auto[id] or self:Classify(id) or "U"
+  if l == "K" then return "I" end
+  return l
 end
 
--- Zuordnung von Hand. list = "V" | "M" | "I" | "K", "U" (zurueck zu unsortiert) oder nil (ganz entfernen)
+-- Zuordnung von Hand. list = "V" | "M" | "I", "U" (zurueck zu unsortiert) oder nil (ganz entfernen)
 function Lists:Set(id, list)
   local db = BananaFarmDB
+  if list == "K" then list = "I" end
   BF:ItemInfo(id)
   db.manualTs[id] = time()
-  if list == "V" or list == "M" or list == "I" or list == "K" then
+  if list == "V" or list == "M" or list == "I" then
     db.manual[id] = list
     db.auto[id] = nil
     db.unsorted[id] = nil
@@ -50,6 +50,7 @@ function Lists:Set(id, list)
     db.auto[id] = nil
     db.unsorted[id] = nil
   end
+  if BF.Sync then BF.Sync:OnLocalChange(id) end
   if BF.UI then BF.UI:Refresh() end
 end
 
@@ -77,6 +78,8 @@ function Lists:Seen(id)
   local db = BananaFarmDB
   BF:ItemInfo(id)
   if db.manual[id] or db.auto[id] then return end
+  -- neues Item: dem Partner (Twink) Bescheid geben, damit er es kennt und im AH mitscannt
+  if BF.Sync then BF.Sync:OnLocalChange(id) end
   local r = self:Classify(id)
   if r then
     db.auto[id] = r
@@ -90,11 +93,12 @@ function Lists:Seen(id)
 end
 
 -- Automatik neu rechnen (nach AH-Scan oder geaenderten Einstellungen). Liefert die Zahl der Wechsel.
+-- Unsortierte Items bleiben dabei unsortiert: die sortiert nur der Knopf "Automatisch einsortieren"
+-- (Lists:AutoSort), abgestimmt in 0.5.0.
 function Lists:Reclassify()
   local db = BananaFarmDB
   local ids, moved = {}, 0
   for id in pairs(db.auto) do table.insert(ids, id) end
-  for id in pairs(db.unsorted) do table.insert(ids, id) end
   for i = 1, getn(ids) do
     local id = ids[i]
     if not db.manual[id] then
@@ -111,6 +115,33 @@ function Lists:Reclassify()
     end
   end
   return moved
+end
+
+-- Knopf in der Liste Unsortiert: jedes unsortierte Item mit AH-Preis nach der Standardregel
+-- einsortieren (lohnt das AH: Mail, sonst Vendor). Ohne AH-Preis (nie gescannt oder im AH nicht
+-- gefunden) bleibt es unsortiert. Liefert: Zahl Mail, Zahl Vendor, Zahl uebrig, Liste der Mail-IDs.
+function Lists:AutoSort()
+  local db = BananaFarmDB
+  local nM, nV, left, mail = 0, 0, 0, {}
+  local ids = {}
+  for id in pairs(db.unsorted) do table.insert(ids, id) end
+  for i = 1, getn(ids) do
+    local id = ids[i]
+    local r = BF:AHNet(id) and self:Classify(id)
+    if r == "M" or r == "V" then
+      db.auto[id] = r
+      db.unsorted[id] = nil
+      if r == "M" then
+        nM = nM + 1
+        table.insert(mail, id)
+      else
+        nV = nV + 1
+      end
+    else
+      left = left + 1
+    end
+  end
+  return nM, nV, left, mail
 end
 
 -- alle IDs einer Liste, nach Name sortiert

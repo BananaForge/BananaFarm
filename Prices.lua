@@ -83,13 +83,18 @@ end
 -- Graue Items und ignorierte Items werden nicht gesucht.
 function BF:ScanTargets()
   local db = BananaFarmDB
-  local seen, ids = {}, {}
+  local seen, ids, unnamed = {}, {}, {}
   local function add(id)
     if seen[id] then return end
     seen[id] = true
-    if self.Lists:Get(id) == "I" then return end
+    if self.Lists:Eff(id) == "I" then return end
     local name, q = self:ItemInfo(id)
-    if q == 0 or not name or string.find(name, "^#%d") then return end
+    -- Name unbekannt (Item kam z. B. per Sync vom Partner): beim Server nachfragen, spaeter scannen
+    if not name or string.find(name, "^#%d") then
+      table.insert(unnamed, id)
+      return
+    end
+    if q == 0 then return end
     table.insert(ids, id)
   end
   for id in pairs(db.manual) do add(id) end
@@ -110,7 +115,7 @@ function BF:ScanTargets()
   local out = {}
   for i = 1, getn(fresh) do table.insert(out, fresh[i]) end
   for i = 1, getn(old) do table.insert(out, old[i]) end
-  return out, getn(fresh)
+  return out, getn(fresh), unnamed
 end
 
 function BF:StartAHScan()
@@ -124,6 +129,7 @@ function BF:StartAHScan()
   end
   if self.scan then return end
   if self.Sync and self.Sync.prep then return end
+  self.nameWait = nil
   -- erst die Listen mit dem Partner abgleichen (falls online), dann scannen
   if self.Sync and self.Sync:PrepareScan(function() BF:BeginAHScan() end) then return end
   self:BeginAHScan()
@@ -131,12 +137,24 @@ end
 
 function BF:BeginAHScan()
   if self.scan or not self.ahOpen then return end
-  local ids, n1 = self:ScanTargets()
+  local ids, n1, unnamed = self:ScanTargets()
+  -- erst die fehlenden Itemnamen beim Server holen (einmal, bis zu 4 s)
+  if getn(unnamed) > 0 and not self.nameWait then
+    self.nameWait = true
+    for i = 1, getn(unnamed) do self:QueryItem(unnamed[i]) end
+    self:Print(string.format(self.T("MSG_AH_NAMES"), getn(unnamed)))
+    self:After(4, function() BF:BeginAHScan() end, "ahnames")
+    return
+  end
+  self.nameWait = nil
   if getn(ids) == 0 then
+    if getn(unnamed) > 0 then self:Print(string.format(self.T("MSG_AH_UNNAMED"), getn(unnamed))) end
     self:Print(self.T("MSG_AH_NOTHING"))
     return
   end
-  self.scan = { ids = ids, n1 = n1, idx = 1, set = 0, none = 0, page = 0, hits = {}, started = GetTime() }
+  for i = 1, getn(unnamed) do self:QueryItem(unnamed[i]) end
+  self.scan = { ids = ids, n1 = n1, idx = 1, set = 0, none = 0, page = 0, hits = {}, started = GetTime(),
+    unnamed = unnamed }
   self:Print(string.format(self.T("MSG_AH_START"), getn(ids)))
   if self.UI then self.UI:Refresh() end
   self:AHQuery()
@@ -247,12 +265,38 @@ end)
 
 function BF:FinishAHScan()
   local s = self.scan
-  self.scan = nil
   if not s then return end
+  -- Items, deren Name waehrend des Scans angekommen ist, noch anhaengen (einmal)
+  if s.unnamed and getn(s.unnamed) > 0 and not s.retried then
+    s.retried = true
+    local still = {}
+    local added = 0
+    for i = 1, getn(s.unnamed) do
+      local id = s.unnamed[i]
+      local name, q = self:ItemInfo(id)
+      if name and not string.find(name, "^#%d") then
+        if q ~= 0 then
+          table.insert(s.ids, id)
+          added = added + 1
+        end
+      else
+        table.insert(still, id)
+      end
+    end
+    s.unnamed = still
+    if added > 0 then
+      self:After(0.3, function() BF:AHQuery() end, "ahq")
+      return
+    end
+  end
+  self.scan = nil
   self:Cancel("ahq")
   self:Cancel("ahtimeout")
   self:Print(string.format(self.T("MSG_AH_DONE"), getn(s.ids), s.set, s.none,
     floor((GetTime() - s.started) + 0.5)))
+  if s.unnamed and getn(s.unnamed) > 0 then
+    self:Print(string.format(self.T("MSG_AH_UNNAMED"), getn(s.unnamed)))
+  end
   -- neue Preise koennen automatische Zuordnungen kippen und Unsortiertes einsortieren
   local moved = self.Lists:Reclassify()
   if moved > 0 then self:Print(string.format(self.T("MSG_RESORTED"), moved)) end

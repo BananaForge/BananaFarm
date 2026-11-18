@@ -22,15 +22,20 @@ local function db()
   return d
 end
 
--- Realmname ohne Apostroph, Leerzeichen und Gross-/Kleinschreibung vergleichen
+-- Realmname nur aus Buchstaben und Ziffern vergleichen: Apostroph-Varianten (auch typografische),
+-- Leerzeichen, Zusaetze wie "OctoWoW N'Zoth" oder "[PvE]" stoeren so nicht.
 local function norm(s)
   s = string.lower(s or "")
-  s = string.gsub(s, "[%s'`]", "")
+  s = string.gsub(s, "[^%a%d]", "")
   return s
 end
 
+function D:RealmName()
+  return (GetRealmName and GetRealmName()) or "?"
+end
+
 function D:OnRealm()
-  return norm(GetRealmName and GetRealmName()) == norm(self.REALM)
+  return string.find(norm(self:RealmName()), norm(self.REALM), 1, true) ~= nil
 end
 
 -- Spendet der Spieler gerade an sich selbst? Dann nichts tun.
@@ -254,6 +259,13 @@ function UI:BuildDonate()
   realm:SetPoint("LEFT", nb, "RIGHT", 10, 0)
   realm:SetText(BF.Donate.REALM)
   f.other = other
+  f.otherText = ot
+  f.nameBox = nb
+
+  -- erkannter Server (zur Kontrolle, unten links)
+  f.realm = self:Font(f, 9, C.muted)
+  f.realm:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -14, 6)
+  f.realm:SetJustifyH("RIGHT")
 
   -- N'Zoth: Vormerken und Abo
   local here = CreateFrame("Frame", nil, f)
@@ -336,12 +348,21 @@ function UI:RefreshDonate()
   local f = self.donate
   if not f or not f:IsVisible() then return end
   local D = BF.Donate
+  f.realm:SetText(string.format(T("DONATE_REALM"), D:RealmName()))
   if D:OnRealm() and not D:IsSelf() then
     f.other:Hide()
     f.here:Show()
   else
     f.here:Hide()
     f.other:Show()
+    -- auf Bareg selbst: eigener Hinweis statt "anderer Server"
+    if D:IsSelf() then
+      f.otherText:SetText(T("DONATE_SELF"))
+      f.nameBox:Hide()
+    else
+      f.otherText:SetText(T("DONATE_OTHER"))
+      f.nameBox:Show()
+    end
   end
   local d = BananaFarmDB.donate
   f.abo.Update()

@@ -75,6 +75,8 @@ function R:Add()
   BF:Print(string.format(BF.T("MSG_RESET"), n, limit))
   if n >= limit then BF:Error(BF.T("MSG_RESET_LIMIT")) end
   BF.Session:NewRun()
+  -- Speedrun: Runde endet mit dem Reset, Stoppuhr auf 0
+  if BF.Speedrun then BF.Speedrun:OnReset() end
   if BF.UI then BF.UI:Refresh() end
 end
 
@@ -87,6 +89,8 @@ function R:Remote(ts)
   BF:Print(string.format(BF.T("MSG_RESET_PARTNER"), n, limit))
   if n >= limit then BF:Error(BF.T("MSG_RESET_LIMIT")) end
   BF.Session:NewRun()
+  -- Speedrun: Runde endet mit dem Reset, Stoppuhr auf 0
+  if BF.Speedrun then BF.Speedrun:OnReset() end
   if BF.UI then BF.UI:Refresh() end
 end
 

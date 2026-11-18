@@ -372,7 +372,7 @@ end
 function UI:BuildLists(p)
   self.chips = {}
   local prev
-  local widths = { V = 66, M = 66, I = 104, K = 86, U = 100 }
+  local widths = { V = 84, M = 84, I = 124, U = 124 }
   for i = 1, getn(BF.LIST_KEYS) do
     local key = BF.LIST_KEYS[i]
     local b = self:Button(p, widths[key] or 86, 22, nil, function()
@@ -385,6 +385,12 @@ function UI:BuildLists(p)
     prev = b
     self.chips[key] = b
   end
+
+  -- Liste Unsortiert: alles mit AH-Preis nach der Standardregel einsortieren (nur per Knopf)
+  self.autoBtn = self:Button(p, 150, 18, "BTN_AUTOSORT", function() UI:AutoSort() end, "primary")
+  self.autoBtn:SetPoint("TOPRIGHT", p, "TOPRIGHT", -14, -30)
+  self:Tip(self.autoBtn, "BTN_AUTOSORT", "TT_AUTOSORT")
+  self.autoBtn:Hide()
 
   -- Was bedeutet die gewaehlte Liste? (eine Zeile unter den Reitern)
   self.listDesc = self:Font(p, 10, C.text)
@@ -464,8 +470,8 @@ function UI:BuildLists(p)
     r:SetScript("OnLeave", function() GameTooltip:Hide() end)
     -- Knoepfe: auf eine andere Liste schieben oder entfernen
     r.btn = {}
-    local defs = { { "V", "V" }, { "M", "M" }, { "I", "I" }, { "K", "K" }, { "X", nil } }
-    for j = 1, 5 do
+    local defs = { { "V", "V" }, { "M", "M" }, { "I", "I" }, { "X", nil } }
+    for j = 1, 4 do
       local list = defs[j][2]
       local label = defs[j][1]
       local b = self:Button(r, 18, 18, label, function()
@@ -474,7 +480,7 @@ function UI:BuildLists(p)
         BF.Lists:Set(id, list)
       end, list and "flat" or "danger")
       if list then self:Tint(b, UI.LIST_COLOR[list]) end
-      b:SetPoint("RIGHT", r, "RIGHT", -2 - (5 - j) * 19, 0)
+      b:SetPoint("RIGHT", r, "RIGHT", -2 - (4 - j) * 19, 0)
       b:SetScript("OnEnter", function()
         GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
         if list then
@@ -541,6 +547,13 @@ function UI:RefreshList()
   end
   local col = UI.LIST_COLOR[self.sel]
   self.listDesc:SetText(T("LISTDESC_" .. self.sel))
+  if self.sel == "U" then
+    self.autoBtn:Show()
+    self.listDesc:SetWidth(290)
+  else
+    self.autoBtn:Hide()
+    self.listDesc:SetWidth(448)
+  end
   if col then self.listDesc:SetTextColor(0.6 + col[1] * 0.8, 0.6 + col[2] * 0.8, 0.6 + col[3] * 0.8) end
   -- auf der Mailliste steht statt des Haendlerwerts das Mailziel
   local mailTab = self.sel == "M"
@@ -811,7 +824,6 @@ function UI:BuildSettings(p)
   checkRow("CHK_GRAY", "grayVendor", resort)
   checkRow("CHK_POPUP", "popup", function() BF.Lists:PopNext() end)
   checkRow("CHK_ALTCLICK", "altClick")
-  checkRow("CHK_KEEP", "keepProtect")
 
   -- Haendler
   section("SEC_VENDOR", "vendor", "MOD_VENDOR")
@@ -856,7 +868,11 @@ function UI:BuildSettings(p)
 
   -- Speedrun und Wunschliste: nur an/aus, alles Weitere im eigenen Reiter
   section("SEC_SPEEDRUN", "speedrun", "MOD_SPEEDRUN")
+  checkRow("CHK_SRAUTO", "srAutoStart")
   infoRow("INFO_SPEEDRUN")
+  section("SEC_CHAMP", "champ", "MOD_CHAMP")
+  checkRow("CHK_CHAMPGOLD", "champGold", function() BF.Champ:Send() end)
+  infoRow("INFO_CHAMP")
   section("SEC_WISH", "wish", "MOD_WISH")
   infoRow("INFO_WISH")
 
@@ -912,6 +928,89 @@ function UI:RefreshModules()
   self:Refresh()
 end
 
+-- Knopf "Automatisch einsortieren": danach fuer jedes neue Mail-Item das Mailziel abfragen
+-- (nur bei mindestens zwei Mailzielen und nur, wenn das Item noch keins hat)
+function UI:AutoSort()
+  local nM, nV, left, mail = BF.Lists:AutoSort()
+  BF:Print(string.format(T("MSG_AUTOSORT"), nM + nV, nM, nV, left))
+  if getn(BananaFarmDB.mailTargets) >= 2 then
+    for i = 1, getn(mail) do
+      if not BF.Mail:IsTarget(BananaFarmDB.mailTarget[mail[i]]) then self:AskTarget(mail[i]) end
+    end
+  end
+  self:Refresh()
+end
+
+-- Fenster "An welchen Mailchar?" mit Warteschlange
+function UI:AskTarget(id)
+  self.tq = self.tq or {}
+  table.insert(self.tq, id)
+  if not (self.tAsk and self.tAsk:IsVisible()) then self:NextTarget() end
+end
+
+function UI:NextTarget()
+  local id = self.tq and table.remove(self.tq, 1)
+  if not id then
+    if self.tAsk then self.tAsk:Hide() end
+    return
+  end
+  local f = self.tAsk
+  if not f then
+    f = self:Window("BananaFarmTargetAsk", 320, 110)
+    self.tAsk = f
+    if not BananaFarmDB.pos["BananaFarmTargetAsk"] then f:SetPoint("CENTER", UIParent, "CENTER", 0, 160) end
+    local title = self:Font(f, 12, C.gold)
+    title:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -12)
+    self:Loc(title, "ASK_TARGET_TITLE")
+    f.left = self:Font(f, 9, C.muted)
+    f.left:SetPoint("TOPRIGHT", f, "TOPRIGHT", -14, -14)
+    f.icon = f:CreateTexture(nil, "ARTWORK")
+    f.icon:SetWidth(24)
+    f.icon:SetHeight(24)
+    f.icon:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -32)
+    f.name = self:Font(f, 12)
+    f.name:SetPoint("LEFT", f.icon, "RIGHT", 8, 0)
+    f.name:SetWidth(260)
+    f.btn = {}
+    for i = 1, 8 do
+      local k = i -- Lua 5.0: Kopie der Zaehlvariable je Durchlauf (Closures)
+      local b = self:Button(f, 140, 22, "?", function()
+        local name = f.btn[k].value
+        if name and f.id then BananaFarmDB.mailTarget[f.id] = name end
+        UI:NextTarget()
+      end, "ok")
+      local col = BF.mod(i - 1, 2)
+      local row = floor((i - 1) / 2)
+      b:SetPoint("TOPLEFT", f, "TOPLEFT", 14 + col * 148, -64 - row * 26)
+      f.btn[i] = b
+    end
+  end
+  f.id = id
+  local name, q, tex = BF:ItemInfo(id)
+  local c = BF.QUALITY_COLOR[q or 1] or BF.QUALITY_COLOR[1]
+  f.icon:SetTexture(tex or "Interface\\Icons\\INV_Misc_QuestionMark")
+  f.name:SetText(name)
+  f.name:SetTextColor(c[1], c[2], c[3])
+  local t = BananaFarmDB.mailTargets
+  local n = getn(t)
+  if n > 8 then n = 8 end
+  for i = 1, 8 do
+    local b = f.btn[i]
+    if i <= n then
+      b.value = t[i]
+      b.fs:SetText(t[i])
+      b:Show()
+    else
+      b.value = nil
+      b:Hide()
+    end
+  end
+  f:SetHeight(72 + floor((n + 1) / 2) * 26)
+  local rest = getn(self.tq)
+  if rest > 0 then f.left:SetText(string.format(T("ASSIGN_LEFT"), rest)) else f.left:SetText("") end
+  f:Show()
+end
+
 -- Kleines Auswahlmenue unter einem Element (z. B. Mailziele). onPick(name) beim Klick.
 function UI:ShowPicker(anchor, names, onPick)
   local m = self.picker
@@ -963,7 +1062,7 @@ function UI:ShowPicker(anchor, names, onPick)
 end
 
 function UI:BuildSetup()
-  local f = self:Window("BananaFarmSetup", 440, 486)
+  local f = self:Window("BananaFarmSetup", 440, 512)
   self.setup = f
   if not BananaFarmDB.pos["BananaFarmSetup"] then f:SetPoint("CENTER", UIParent, "CENTER", 0, 20) end
   local icon = f:CreateTexture(nil, "ARTWORK")
@@ -1395,172 +1494,410 @@ function UI:RefreshWish()
 end
 
 -- ------------------------------------------------------------
--- Speedrun: Statistik, Sessions mit Blockzeit, Rundenzeiten, Posten in den Chat
+-- Speedrun-Dashboard (0.5.0): Unter-Reiter "Meine Zeiten" und "Lasher Championships"
 -- ------------------------------------------------------------
-local SR_SESS_ROWS = 7
-local SR_LAP_ROWS = 9
+local SR_ROWS = 8
+local CH_ROWS = 10
+
+-- Kachel: kleine Ueberschrift, grosser Wert
+function UI:Tile(parent, w, h, key)
+  local t = CreateFrame("Frame", nil, parent)
+  t:SetWidth(w)
+  t:SetHeight(h)
+  t:SetBackdrop(self.BACKDROP)
+  t:SetBackdropColor(C.panel[1], C.panel[2], C.panel[3], 0.95)
+  t:SetBackdropBorderColor(C.brass[1], C.brass[2], C.brass[3], 0.9)
+  t.label = self:Font(t, 9, C.muted)
+  t.label:SetPoint("TOPLEFT", t, "TOPLEFT", 7, -6)
+  if key then self:Loc(t.label, key) end
+  t.value = self:Font(t, 14, C.gold)
+  t.value:SetPoint("BOTTOMLEFT", t, "BOTTOMLEFT", 7, 6)
+  t.sub = self:Font(t, 9, C.muted)
+  t.sub:SetPoint("BOTTOMRIGHT", t, "BOTTOMRIGHT", -6, 7)
+  t.sub:SetJustifyH("RIGHT")
+  return t
+end
+
+local function deltaText(t, best)
+  if not best or not t then return "" end
+  local d = t - best
+  if d == 0 then return "|cffffd100" .. T("SR_BEST_SHORT") .. "|r" end
+  if d < 0 then return "|cff40ff40-" .. BF.Duration(-d) .. "|r" end
+  return "|cffff6050+" .. BF.Duration(d) .. "|r"
+end
+
+local function goldText(v)
+  if not v then return "|cff808590-|r" end
+  return BF.Money(v)
+end
 
 function UI:BuildSpeedrun(p)
-  local sr = { sess = {}, laps = {} }
+  local sr = { rows = {}, boxes = {}, tiles = {}, crows = {} }
   self.sr = sr
-  sr.stats = self:Font(p, 11, C.text)
-  sr.stats:SetPoint("TOPLEFT", p, "TOPLEFT", 16, -10)
-  sr.stats:SetWidth(448)
-  sr.stats2 = self:Font(p, 11, C.text)
-  sr.stats2:SetPoint("TOPLEFT", p, "TOPLEFT", 16, -28)
-  sr.stats2:SetWidth(448)
+  sr.view = "mine"
+  sr.cat = "week"
+  sr.sort = "best"
 
-  local function head(y, key)
-    local h = self:Font(p, 11, C.gold)
-    h:SetPoint("TOPLEFT", p, "TOPLEFT", 16, y)
-    self:Loc(h, key)
-    self:HLine(p, y - 16, 16, -16)
-  end
-  local function col(y, x, w, key)
-    local fs = self:Font(p, 10, C.muted)
-    fs:SetPoint("TOPLEFT", p, "TOPLEFT", x, y)
-    fs:SetWidth(w)
-    fs:SetJustifyH("CENTER")
-    self:Loc(fs, key)
-  end
-  local function cell(y, x, w)
-    local fs = self:Font(p, 11, C.text)
-    fs:SetPoint("TOPLEFT", p, "TOPLEFT", x, y)
-    fs:SetWidth(w)
-    fs:SetHeight(14)
-    fs:SetJustifyH("CENTER")
-    return fs
+  sr.tabMine = self:Button(p, 120, 22, "SR_TAB_MINE", function() sr.view = "mine"; UI:RefreshSpeedrun() end, "flat")
+  sr.tabMine:SetPoint("TOPLEFT", p, "TOPLEFT", 14, -6)
+  sr.tabGuild = self:Button(p, 170, 22, "SR_TAB_GUILD", function() sr.view = "guild"; UI:RefreshSpeedrun() end, "flat")
+  sr.tabGuild:SetPoint("LEFT", sr.tabMine, "RIGHT", 4, 0)
+
+  -- ---------------- Meine Zeiten ----------------
+  local m = CreateFrame("Frame", nil, p)
+  m:SetPoint("TOPLEFT", p, "TOPLEFT", 0, 0)
+  m:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT", 0, 0)
+  sr.mine = m
+
+  local keys = { "SR_T_BESTHEAT", "SR_T_AVGHEAT", "SR_T_BESTLAP", "SR_T_WEEK" }
+  for i = 1, 4 do
+    local t = self:Tile(m, 108, 46, keys[i])
+    t:SetPoint("TOPLEFT", m, "TOPLEFT", 14 + (i - 1) * 113, -36)
+    sr.tiles[i] = t
   end
 
-  -- Sessions
-  head(-52, "SR_H_SESSIONS")
-  col(-72, 16, 110, "SR_COL_DATE")
-  col(-72, 130, 50, "SR_COL_RESETS")
-  col(-72, 190, 80, "SR_COL_TIME")
-  col(-72, 280, 120, "SR_COL_BLOCK")
-  for i = 1, SR_SESS_ROWS do
-    local y = -90 - (i - 1) * 18
-    local k = i -- Lua 5.0: Closures teilen sich die Zaehlvariable, darum eine Kopie je Durchlauf
-    local row = {
-      date = cell(y, 16, 110),
-      resets = cell(y, 130, 50),
-      time = cell(y, 190, 80),
-      block = cell(y, 280, 120),
-      live = cell(y, 410, 60),
-    }
-    row.del = self:Button(p, 18, 16, "x", function()
-      local e = sr.sess[k].entry
-      if e then BF.Speedrun:DeleteSession(e) end
+  local h1 = self:Font(m, 12, C.gold)
+  h1:SetPoint("TOPLEFT", m, "TOPLEFT", 16, -92)
+  sr.curTitle = h1
+  for i = 1, 5 do
+    local bx = self:Tile(m, 84, 42, nil)
+    bx:SetPoint("TOPLEFT", m, "TOPLEFT", 14 + (i - 1) * 89, -108)
+    bx.label:SetText(string.format(T("SR_LAPN"), i))
+    sr.boxes[i] = bx
+  end
+
+  local h2 = self:Font(m, 12, C.gold)
+  h2:SetPoint("TOPLEFT", m, "TOPLEFT", 16, -162)
+  self:Loc(h2, "SR_RECENT")
+  local cols = { { "SR_C_DATE", 34 }, { "SR_C_TOTAL", 140 }, { "SR_C_PLAY", 210 }, { "SR_C_VSBEST", 280 }, { "SR_C_GOLD", 350 } }
+  for i = 1, getn(cols) do
+    local fs = self:Font(m, 10, C.muted)
+    fs:SetPoint("TOPLEFT", m, "TOPLEFT", cols[i][2], -180)
+    self:Loc(fs, cols[i][1])
+  end
+  for i = 1, SR_ROWS do
+    local r = CreateFrame("Button", nil, m)
+    r:SetHeight(19)
+    r:SetPoint("TOPLEFT", m, "TOPLEFT", 14, -194 - (i - 1) * 20)
+    r:SetPoint("TOPRIGHT", m, "TOPRIGHT", -14, -194 - (i - 1) * 20)
+    local bg = r:CreateTexture(nil, "BACKGROUND")
+    bg:SetTexture(WHITE)
+    bg:SetAllPoints(r)
+    if BF.mod(i, 2) == 0 then bg:SetVertexColor(1, 1, 1, 0.03) else bg:SetVertexColor(1, 1, 1, 0.07) end
+    r.sel = r:CreateTexture(nil, "BORDER")
+    r.sel:SetTexture(WHITE)
+    r.sel:SetAllPoints(r)
+    r.sel:SetVertexColor(1, 0.82, 0.26, 0.15)
+    r.sel:Hide()
+    r.cells = {}
+    for j = 1, getn(cols) do
+      local fs = self:Font(r, 10)
+      fs:SetPoint("LEFT", r, "LEFT", cols[j][2] - 14, 0)
+      r.cells[j] = fs
+    end
+    r.del = self:Button(r, 16, 16, "X", function()
+      if r.e then BF.Speedrun:DeleteHeat(r.e) end
     end, "danger")
-    row.del:SetPoint("TOPLEFT", p, "TOPLEFT", 450, y + 1)
-    sr.sess[i] = row
+    r.del:SetPoint("RIGHT", r, "RIGHT", -2, 0)
+    r:SetScript("OnClick", function()
+      sr.selHeat = (sr.selHeat ~= this.e) and this.e or nil
+      UI:RefreshSpeedrun()
+    end)
+    sr.rows[i] = r
   end
+  sr.detail = self:Font(m, 10, C.text)
+  sr.detail:SetPoint("TOPLEFT", m, "TOPLEFT", 16, -358)
+  sr.detail:SetWidth(448)
+  sr.empty = self:Font(m, 11, C.muted)
+  sr.empty:SetPoint("TOPLEFT", m, "TOPLEFT", 30, -220)
+  sr.empty:SetWidth(420)
+  sr.empty:SetJustifyH("LEFT")
+  self:Loc(sr.empty, "SR_EMPTY")
 
-  -- Runden
-  head(-224, "SR_H_LAPS")
-  col(-244, 16, 110, "SR_COL_DATE")
-  col(-244, 130, 80, "SR_COL_LAP")
-  col(-244, 220, 100, "SR_COL_DELTA")
-  for i = 1, SR_LAP_ROWS do
-    local y = -262 - (i - 1) * 18
-    local k = i -- Lua 5.0: Closures teilen sich die Zaehlvariable, darum eine Kopie je Durchlauf
-    local row = { date = cell(y, 16, 110), time = cell(y, 130, 80), delta = cell(y, 220, 100) }
-    row.del = self:Button(p, 18, 16, "x", function()
-      local e = sr.laps[k].entry
-      if e then BF.Speedrun:DeleteLap(e) end
-    end, "danger")
-    row.del:SetPoint("TOPLEFT", p, "TOPLEFT", 330, y + 1)
-    sr.laps[i] = row
-  end
-
-  -- Posten
-  sr.chan = self:Button(p, 104, 22, nil, function()
+  sr.chan = self:Button(m, 100, 22, nil, function()
     BF.Speedrun:CycleChannel()
     UI:RefreshSpeedrun()
-  end)
-  sr.chan:SetPoint("TOPLEFT", p, "TOPLEFT", 16, -432)
-  local b1 = self:Button(p, 104, 22, "SR_POST_LAST", function() BF.Speedrun:Post("last") end, "primary")
-  b1:SetPoint("LEFT", sr.chan, "RIGHT", 6, 0)
-  local b2 = self:Button(p, 104, 22, "SR_POST_BEST", function() BF.Speedrun:Post("best") end, "primary")
-  b2:SetPoint("LEFT", b1, "RIGHT", 6, 0)
-  local b3 = self:Button(p, 104, 22, "SR_POST_BLOCK", function() BF.Speedrun:Post("block") end, "primary")
-  b3:SetPoint("LEFT", b2, "RIGHT", 6, 0)
+  end, "flat")
+  sr.chan:SetPoint("TOPLEFT", m, "TOPLEFT", 14, -384)
+  local pl = self:Button(m, 110, 22, "SR_POST_LAST", function() BF.Speedrun:Post("last") end)
+  pl:SetPoint("LEFT", sr.chan, "RIGHT", 6, 0)
+  local pb = self:Button(m, 110, 22, "SR_POST_BEST", function() BF.Speedrun:Post("best") end)
+  pb:SetPoint("LEFT", pl, "RIGHT", 6, 0)
+  local ph = self:Button(m, 110, 22, "SR_POST_HEAT", function() BF.Speedrun:Post("heat") end)
+  ph:SetPoint("LEFT", pb, "RIGHT", 6, 0)
 
-  sr.hint = self:Font(p, 10, C.muted)
-  sr.hint:SetPoint("BOTTOMLEFT", p, "BOTTOMLEFT", 16, 12)
+  sr.auto = self:Check(m, "CHK_SRAUTO", "srAutoStart")
+  sr.auto:SetPoint("TOPLEFT", m, "TOPLEFT", 16, -416)
+  self:Tip(sr.auto, "CHK_SRAUTO", "CHK_SRAUTO_TT")
+  sr.hint = self:Font(m, 10, C.muted)
+  sr.hint:SetPoint("TOPLEFT", m, "TOPLEFT", 16, -442)
   sr.hint:SetWidth(448)
+  sr.hint:SetJustifyH("LEFT")
+
+  -- ---------------- Lasher Championships ----------------
+  local gp = CreateFrame("Frame", nil, p)
+  gp:SetPoint("TOPLEFT", p, "TOPLEFT", 0, 0)
+  gp:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT", 0, 0)
+  sr.guild = gp
+  local icon = gp:CreateTexture(nil, "ARTWORK")
+  icon:SetTexture(BF.CHAMP_ICON)
+  icon:SetWidth(40)
+  icon:SetHeight(40)
+  icon:SetPoint("TOPLEFT", gp, "TOPLEFT", 14, -32)
+  sr.cTitle = self:Font(gp, 17, C.gold, FONT_TITLE)
+  sr.cTitle:SetPoint("TOPLEFT", gp, "TOPLEFT", 60, -40)
+  sr.cInfo = self:Font(gp, 10, C.muted)
+  sr.cInfo:SetPoint("TOPLEFT", gp, "TOPLEFT", 60, -60)
+
+  sr.cats = {}
+  local cdefs = { { "fast", "SR_CAT_FAST", 150 }, { "week", "SR_CAT_WEEK", 80 }, { "month", "SR_CAT_MONTH", 80 }, { "all", "SR_CAT_ALL", 80 } }
+  local prev
+  for i = 1, getn(cdefs) do
+    local key = cdefs[i][1]
+    local b = self:Button(gp, cdefs[i][3], 22, cdefs[i][2], function() sr.cat = key; UI:RefreshSpeedrun() end, "flat")
+    if prev then b:SetPoint("LEFT", prev, "RIGHT", 4, 0) else b:SetPoint("TOPLEFT", gp, "TOPLEFT", 14, -80) end
+    prev = b
+    sr.cats[key] = b
+  end
+  sr.sortLabel = self:Font(gp, 10, C.muted)
+  sr.sortLabel:SetPoint("TOPLEFT", gp, "TOPLEFT", 16, -112)
+  self:Loc(sr.sortLabel, "SR_SORT")
+  sr.sorts = {}
+  local sdefs = { { "n", "SR_S_N", 90 }, { "best", "SR_S_BEST", 80 }, { "gold", "SR_S_GOLD", 60 } }
+  prev = nil
+  for i = 1, getn(sdefs) do
+    local key = sdefs[i][1]
+    local b = self:Button(gp, sdefs[i][3], 18, sdefs[i][2], function() sr.sort = key; UI:RefreshSpeedrun() end, "flat")
+    if prev then b:SetPoint("LEFT", prev, "RIGHT", 4, 0) else b:SetPoint("LEFT", sr.sortLabel, "RIGHT", 8, 0) end
+    prev = b
+    sr.sorts[key] = b
+  end
+
+  local ccols = { { "SR_C_RANK", 18 }, { "SR_C_NAME", 50 }, { "SR_C_HEATS", 200 }, { "SR_C_BEST", 290 }, { "SR_C_GOLD", 370 } }
+  for i = 1, getn(ccols) do
+    local fs = self:Font(gp, 10, C.muted)
+    fs:SetPoint("TOPLEFT", gp, "TOPLEFT", ccols[i][2], -140)
+    self:Loc(fs, ccols[i][1])
+  end
+  for i = 1, CH_ROWS do
+    local r = CreateFrame("Frame", nil, gp)
+    r:SetHeight(20)
+    r:SetPoint("TOPLEFT", gp, "TOPLEFT", 14, -154 - (i - 1) * 22)
+    r:SetPoint("TOPRIGHT", gp, "TOPRIGHT", -14, -154 - (i - 1) * 22)
+    local bg = r:CreateTexture(nil, "BACKGROUND")
+    bg:SetTexture(WHITE)
+    bg:SetAllPoints(r)
+    if i <= 3 then bg:SetVertexColor(1, 0.82, 0.26, 0.10) elseif BF.mod(i, 2) == 0 then bg:SetVertexColor(1, 1, 1, 0.03) else bg:SetVertexColor(1, 1, 1, 0.07) end
+    r.cells = {}
+    for j = 1, getn(ccols) do
+      local fs = self:Font(r, 11)
+      fs:SetPoint("LEFT", r, "LEFT", ccols[j][2] - 14, 0)
+      r.cells[j] = fs
+    end
+    sr.crows[i] = r
+  end
+  sr.cEmpty = self:Font(gp, 11, C.muted)
+  sr.cEmpty:SetPoint("TOPLEFT", gp, "TOPLEFT", 30, -180)
+  sr.cEmpty:SetWidth(420)
+  sr.cEmpty:SetJustifyH("LEFT")
+
+  local win = self:Button(gp, 150, 22, "SR_SHOW_WINNERS", function()
+    local top = BF.Champ:Ranking("week", "best")
+    if getn(top) == 0 then BF:Print(T("MSG_CHAMP_NONE")) else UI:ShowWinners(top) end
+  end, "primary")
+  win:SetPoint("TOPLEFT", gp, "TOPLEFT", 14, -384)
+  local share = self:Check(gp, "CHK_CHAMPGOLD", "champGold", function() BF.Champ:Send() end)
+  share:SetPoint("TOPLEFT", gp, "TOPLEFT", 16, -416)
+  self:Tip(share, "CHK_CHAMPGOLD", "CHK_CHAMPGOLD_TT")
+  sr.share = share
+  sr.cOff = self:Font(gp, 11, C.text)
+  sr.cOff:SetPoint("TOPLEFT", gp, "TOPLEFT", 30, -200)
+  sr.cOff:SetWidth(420)
+  sr.cOff:SetJustifyH("LEFT")
+  self:Loc(sr.cOff, "SR_CHAMP_OFF")
+  sr.cNote = self:Font(gp, 9, C.muted)
+  sr.cNote:SetPoint("TOPLEFT", gp, "TOPLEFT", 16, -442)
+  sr.cNote:SetWidth(448)
+  sr.cNote:SetJustifyH("LEFT")
+  self:Loc(sr.cNote, "SR_CHAMP_NOTE")
 end
 
 function UI:RefreshSpeedrun()
   local sr = self.sr
-  if not sr or self.page ~= "speedrun" then return end
+  if not sr or not self.frame:IsVisible() or self.page ~= "speedrun" then return end
   local SR = BF.Speedrun
-  local gray = "|cff9a9cb3"
+  local d = BananaFarmDB.speedrun
   local limit = BF.Resets:Limit()
-
-  local n, best, avg, last = SR:LapStats()
-  if n > 0 then
-    sr.stats:SetText(string.format(T("SR_STATS"), n, BF.Duration(best), BF.Duration(avg), BF.Duration(last)))
+  sr.tabMine:SetActive(sr.view == "mine")
+  sr.tabGuild:SetActive(sr.view == "guild")
+  if sr.view == "mine" then
+    sr.mine:Show()
+    sr.guild:Hide()
   else
-    sr.stats:SetText(gray .. T("SR_NOLAPS") .. "|r")
-  end
-  local b = SR:BestBlock()
-  if b then
-    sr.stats2:SetText(string.format(T("SR_BESTBLOCK"), limit, BF.Duration(b)))
-  else
-    sr.stats2:SetText(gray .. string.format(T("SR_NOBLOCK"), limit) .. "|r")
+    sr.mine:Hide()
+    sr.guild:Show()
   end
 
-  local rows = SR:SessionRows()
-  for i = 1, SR_SESS_ROWS do
-    local r, e = sr.sess[i], rows[i]
-    if e then
-      local rc = "|cffffffff"
-      if e.resets >= limit then rc = "|cffffd100" end
-      r.date:SetText(e.at and date("%d.%m. %H:%M", e.at) or "-")
-      r.resets:SetText(rc .. e.resets .. "|r")
-      r.time:SetText(BF.Duration(e.elapsed))
-      r.block:SetText(e.out and ("|cffffd100" .. BF.Duration(e.out) .. "|r") or (gray .. "-|r"))
-      r.live:SetText(e.live and (gray .. T("SR_LIVE") .. "|r") or "")
-      -- die laufende oder letzte Session bleibt, beendete lassen sich loeschen
-      r.entry = (not e.cur) and e or nil
-      if r.entry then r.del:Show() else r.del:Hide() end
+  -- Kacheln
+  local best = SR:BestHeat()
+  local n, bestLap = SR:LapStats()
+  local wn = SR:PeriodStats(SR.WeekStart())
+  local avg = SR:HeatAvg()
+  sr.tiles[1].value:SetText(best and BF.Duration(best.total) or "-")
+  sr.tiles[1].sub:SetText(best and date("%d.%m.", best.at) or "")
+  sr.tiles[2].value:SetText(avg and BF.Duration(avg) or "-")
+  sr.tiles[2].sub:SetText(string.format(T("SR_N_HEATS"), getn(d.heats or {})))
+  sr.tiles[3].value:SetText(bestLap and BF.Duration(bestLap) or "-")
+  sr.tiles[3].sub:SetText(n > 0 and string.format(T("SR_N_LAPS"), n) or "")
+  sr.tiles[4].value:SetText(tostring(wn))
+  sr.tiles[4].sub:SetText(T("SR_HEATS_SHORT"))
+
+  -- laufender Durchgang: fertige Runden, die laufende Runde in Gold
+  local heat = d.heat or { laps = {} }
+  local hl = heat.laps or {}
+  sr.curTitle:SetText(string.format(T("SR_CURRENT"), getn(hl), limit))
+  for i = 1, 5 do
+    local bx = sr.boxes[i]
+    if i > limit then
+      bx:Hide()
     else
-      r.date:SetText("")
-      r.resets:SetText("")
-      r.time:SetText("")
-      r.block:SetText("")
-      r.live:SetText("")
-      r.entry = nil
-      r.del:Hide()
-    end
-  end
-
-  local laps = BananaFarmDB.speedrun.laps
-  local total = getn(laps)
-  for i = 1, SR_LAP_ROWS do
-    local r, e = sr.laps[i], laps[total - i + 1]
-    if e then
-      r.date:SetText(date("%d.%m. %H:%M", e.at))
-      r.time:SetText(BF.Duration(e.t))
-      if e.t <= best then
-        r.delta:SetText("|cffffd100" .. T("SR_BEST") .. "|r")
+      bx:Show()
+      local lap = hl[i]
+      if lap then
+        bx.value:SetText(BF.Duration(lap.t))
+        bx.value:SetTextColor(1, 1, 1)
+        bx.sub:SetText(deltaText(lap.t, bestLap))
+      elseif i == getn(hl) + 1 and (SR:Running() or SR:Elapsed() > 0) then
+        bx.value:SetText(BF.Duration(SR:Elapsed()))
+        bx.value:SetTextColor(C.gold[1], C.gold[2], C.gold[3])
+        bx.sub:SetText(SR:Running() and T("SR_RUNNING") or "")
       else
-        r.delta:SetText(gray .. "+" .. BF.Duration(e.t - best) .. "|r")
+        bx.value:SetText("-")
+        bx.value:SetTextColor(C.muted[1], C.muted[2], C.muted[3])
+        bx.sub:SetText("")
       end
-      r.entry = e
-      r.del:Show()
-    else
-      r.date:SetText("")
-      r.time:SetText("")
-      r.delta:SetText("")
-      r.entry = nil
-      r.del:Hide()
     end
   end
 
+  -- letzte Durchgaenge, neueste zuerst
+  local hs = d.heats or {}
+  local count = getn(hs)
+  for i = 1, SR_ROWS do
+    local r = sr.rows[i]
+    local e = hs[count - i + 1]
+    r.e = e
+    if e then
+      r.cells[1]:SetText(date("%d.%m. %H:%M", e.at))
+      r.cells[2]:SetText(BF.Duration(e.total))
+      r.cells[3]:SetText(BF.Duration(e.play))
+      r.cells[4]:SetText(deltaText(e.total, best and best.total))
+      r.cells[5]:SetText(goldText(e.gold))
+      if sr.selHeat == e then r.sel:Show() else r.sel:Hide() end
+      r:Show()
+    else
+      r:Hide()
+    end
+  end
+  if count == 0 then sr.empty:Show() else sr.empty:Hide() end
+  local sel = sr.selHeat
+  if sel then
+    local parts = {}
+    for i = 1, getn(sel.laps) do table.insert(parts, i .. ") " .. BF.Duration(sel.laps[i])) end
+    sr.detail:SetText(T("SR_LAPS_OF") .. "  " .. table.concat(parts, "   "))
+  elseif count > 0 then
+    sr.detail:SetText("|cff808590" .. T("SR_CLICK_HEAT") .. "|r")
+  else
+    sr.detail:SetText("")
+  end
   sr.chan.fs:SetText(string.format(T("SR_CHANNEL"), T("SR_CH_" .. SR:Channel())))
-  sr.hint:SetText(string.format(T("SR_HINT"), limit))
+  sr.auto.Update()
+  sr.hint:SetText(string.format(T("SR_HINT2"), limit))
+
+  -- Lasher Championships
+  sr.cTitle:SetText(string.format(T("CHAMP_TITLE"), date("%Y")))
+  local on = BF:Enabled("champ")
+  sr.share.Update()
+  for key, b in pairs(sr.cats) do b:SetActive(key == sr.cat) end
+  for key, b in pairs(sr.sorts) do b:SetActive(key == sr.sort) end
+  if sr.cat == "fast" then
+    sr.sortLabel:Hide()
+    for _, b in pairs(sr.sorts) do b:Hide() end
+  else
+    sr.sortLabel:Show()
+    for _, b in pairs(sr.sorts) do b:Show() end
+  end
+  local rows = on and BF.Champ:Ranking(sr.cat, sr.sort) or {}
+  if on then
+    sr.cOff:Hide()
+    sr.cInfo:SetText(string.format(T("CHAMP_INFO"), BF.Champ:PlayerCount()))
+  else
+    sr.cOff:Show()
+    sr.cInfo:SetText("")
+  end
+  for i = 1, CH_ROWS do
+    local r = sr.crows[i]
+    local e = rows[i]
+    if e then
+      r.cells[1]:SetText(i .. ".")
+      r.cells[2]:SetText(e.name == UnitName("player") and ("|cffffd100" .. e.name .. "|r") or e.name)
+      r.cells[3]:SetText(tostring(e.n))
+      r.cells[4]:SetText(e.best and BF.Duration(e.best) or "-")
+      r.cells[5]:SetText(goldText(e.gold))
+      r:Show()
+    else
+      r:Hide()
+    end
+  end
+  if on and getn(rows) == 0 then
+    sr.cEmpty:SetText(T("SR_CHAMP_EMPTY"))
+    sr.cEmpty:Show()
+  else
+    sr.cEmpty:Hide()
+  end
+end
+
+-- Pop-up Wochensieger (sonntags), top = Ranking("week", "best")
+function UI:ShowWinners(top)
+  local f = self.winners
+  if not f then
+    f = self:Window("BananaFarmWinners", 340, 360)
+    self.winners = f
+    if not BananaFarmDB.pos["BananaFarmWinners"] then f:SetPoint("CENTER", UIParent, "CENTER", 0, 60) end
+    tinsert(UISpecialFrames, "BananaFarmWinners")
+    local icon = f:CreateTexture(nil, "ARTWORK")
+    icon:SetTexture(BF.CHAMP_ICON)
+    icon:SetWidth(140)
+    icon:SetHeight(140)
+    icon:SetPoint("TOP", f, "TOP", 0, -12)
+    f.title = self:Font(f, 18, C.gold, FONT_TITLE)
+    f.title:SetPoint("TOP", icon, "BOTTOM", 0, -6)
+    f.title:SetJustifyH("CENTER")
+    f.sub = self:Font(f, 11, C.muted)
+    f.sub:SetPoint("TOP", f.title, "BOTTOM", 0, -4)
+    f.sub:SetJustifyH("CENTER")
+    f.lines = {}
+    for i = 1, 3 do
+      local fs = self:Font(f, i == 1 and 15 or 12, i == 1 and C.gold or C.text)
+      fs:SetPoint("TOP", f.sub, "BOTTOM", 0, -12 - (i - 1) * 24)
+      fs:SetJustifyH("CENTER")
+      f.lines[i] = fs
+    end
+    local close = self:Button(f, 120, 24, "BTN_CLOSE", function() f:Hide() end, "primary")
+    close:SetPoint("BOTTOM", f, "BOTTOM", 0, 14)
+  end
+  local ws = BF.Speedrun.WeekStart()
+  f.title:SetText(string.format(T("CHAMP_TITLE"), date("%Y")))
+  f.sub:SetText(string.format(T("CHAMP_WEEK"), date("%d.%m.", ws), date("%d.%m.", ws + 6 * 86400)))
+  local medal = { "|cffffd100", "|cffc7c7cf", "|cffeda55f" }
+  for i = 1, 3 do
+    local e = top[i]
+    if e then
+      f.lines[i]:SetText(medal[i] .. i .. ". " .. e.name .. "|r   " .. BF.Duration(e.best))
+    else
+      f.lines[i]:SetText("")
+    end
+  end
+  f:Show()
 end
 
 function UI:Toggle()
@@ -1593,6 +1930,7 @@ function UI:RefreshSession()
       text = gray .. T("BAR_IDLE") .. "|r"
     end
     self.sessText:SetText(text)
+    if self.page == "speedrun" then self:RefreshSpeedrun() end
     self.sessBtn.fs:SetText(T(running and "BTN_SESSION_STOP" or "BTN_SESSION_START"))
     self:Tint(self.sessBtn, running and { 0.38, 0.08, 0.06 } or { 0.10, 0.32, 0.12 })
   end
@@ -1637,7 +1975,9 @@ function UI:RefreshSession()
       local swRun = SR:Running()
       b.swBtn.fs:SetText(T(swRun and "BTN_STOP" or "BTN_START"))
       local col = swRun and "|cffffd100" or "|cffffffff"
+      local hn = getn((BananaFarmDB.speedrun.heat or {}).laps or {})
       local line3 = gray .. T("BAR_LAP") .. "|r " .. col .. BF.Duration(SR:Elapsed()) .. "|r"
+        .. "   " .. gray .. string.format(T("BAR_HEAT"), hn, BF.Resets:Limit()) .. "|r"
       local n, best, _, last = SR:LapStats()
       if n > 0 then
         line3 = line3 .. "   " .. gray .. T("BAR_LAST") .. "|r " .. BF.Duration(last)
@@ -1743,7 +2083,7 @@ end
 -- Zuordnungs-Pop-up fuer unsortierte Items
 -- ------------------------------------------------------------
 function UI:BuildAssign()
-  local f = self:Window("BananaFarmAssign", 440, 128)
+  local f = self:Window("BananaFarmAssign", 360, 128)
   self.assign = f
   if not BananaFarmDB.pos["BananaFarmAssign"] then f:SetPoint("CENTER", UIParent, "CENTER", 0, 180) end
   local title = self:Font(f, 12, C.gold)
@@ -1766,7 +2106,7 @@ function UI:BuildAssign()
   slot:SetScript("OnLeave", function() GameTooltip:Hide() end)
   f.name = self:Font(f, 12)
   f.name:SetPoint("TOPLEFT", slot, "TOPRIGHT", 8, -2)
-  f.name:SetWidth(360)
+  f.name:SetWidth(290)
   f.name:SetHeight(13)
   f.values = self:Font(f, 10, C.muted)
   f.values:SetPoint("TOPLEFT", slot, "TOPRIGHT", 8, -19)
@@ -1825,12 +2165,8 @@ function UI:BuildAssign()
   bi:SetPoint("LEFT", bm, "RIGHT", 5, 0)
   self:Tint(bi, UI.LIST_COLOR.I)
   self:Tip(bi, "LIST_I", "LISTDESC_I")
-  local bk = self:Button(f, 84, 24, "LIST_K", choose("K"))
-  bk:SetPoint("LEFT", bi, "RIGHT", 5, 0)
-  self:Tint(bk, UI.LIST_COLOR.K)
-  self:Tip(bk, "LIST_K", "LISTDESC_K")
   local bl = self:Button(f, 72, 24, "BTN_LATER", choose(nil), "flat")
-  bl:SetPoint("LEFT", bk, "RIGHT", 5, 0)
+  bl:SetPoint("LEFT", bi, "RIGHT", 5, 0)
   f.later = bl
 end
 

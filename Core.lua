@@ -9,8 +9,9 @@
 BananaFarm = {}
 local BF = BananaFarm
 
-BF.VERSION = "0.4.1"
+BF.VERSION = "0.5.0"
 BF.ICON = "Interface\\AddOns\\BananaFarm\\Icon"
+BF.CHAMP_ICON = "Interface\\AddOns\\BananaFarm\\Champions"
 
 local getn = table.getn
 local floor = math.floor
@@ -240,8 +241,10 @@ end
 -- Module: einzeln ein- und ausschaltbar. Ein ausgeschaltetes Modul bleibt stumm
 -- (keine Fenster, keine Abfragen, keine Hooks mit Wirkung). vendor und mail brauchen items.
 -- ------------------------------------------------------------
-BF.MODULES = { "tracking", "items", "vendor", "mail", "resets", "pulls", "speedrun", "wish", "sync" }
-BF.MODULE_NEEDS = { vendor = "items", mail = "items" }
+BF.MODULES = { "tracking", "items", "vendor", "mail", "resets", "pulls", "speedrun", "wish", "sync", "champ" }
+-- Module, die ausgeschaltet starten (alle anderen sind beim ersten Start an)
+BF.MODULE_OFF = { champ = true }
+BF.MODULE_NEEDS = { vendor = "items", mail = "items", champ = "speedrun" }
 
 function BF:Enabled(name)
   local m = BananaFarmDB and BananaFarmDB.modules
@@ -279,13 +282,14 @@ BF.DEFAULTS = {
   protect = true,      -- in der Session: beim Haendler nur die Vendorliste verkaufbar
   resetLimit = 5,      -- erlaubte Instanz-Resets pro Stunde
   pullLimit = 80,      -- Hunter-Modus: ab so vielen Mobs verschwinden die Leichen
-  keepProtect = true,  -- Liste "Behalten" schuetzt nur waehrend einer laufenden Session
   autoSync = true,     -- bei Login und vor dem Logout mit dem Partner abgleichen
   syncPeer = "",       -- Sync-Partner (leer: Bankalt)
   srChannel = "PARTY", -- Speedrun: Kanal fuers Posten (PARTY, RAID, GUILD, SAY)
   offlineTime = true,  -- Session-Uhr laeuft offline weiter (Relog beim Reset), Luecken bis offlineMax
   offlineMax = 900,    -- laengere Pausen (Sekunden) zaehlen nicht, z. B. ueber Nacht ausgeloggt
   repairCost = true,   -- Reparaturkosten in der Session vom Wert abziehen
+  srAutoStart = true,  -- Speedrun: Stoppuhr beim Betreten von Duesterbruch starten
+  champGold = false,   -- Lasher Championships: eigenes Gold mit der Gilde teilen
 }
 
 function BF:InitDB()
@@ -313,7 +317,7 @@ function BF:InitDB()
   end
   db.modules = db.modules or {}   -- [Modulname] = true/false (siehe BF.MODULES)
   for i = 1, getn(BF.MODULES) do
-    if db.modules[BF.MODULES[i]] == nil then db.modules[BF.MODULES[i]] = true end
+    if db.modules[BF.MODULES[i]] == nil then db.modules[BF.MODULES[i]] = not BF.MODULE_OFF[BF.MODULES[i]] end
   end
   db.mailTargets = db.mailTargets or {} -- weitere Mailziele (Namen), das erste ist das Standardziel
   db.mailTarget = db.mailTarget or {}   -- [id] = Name des Mailziels (wird nicht gesynct)
@@ -327,6 +331,14 @@ function BF:InitDB()
   db.session = db.session or { running = false, elapsed = 0, items = {}, coin = 0, resets = 0,
     run = { items = {}, coin = 0, start = 0 } }
   if first then db.manual[6948] = "I" end -- Ruhestein
+  -- 0.5.0: Liste "Behalten" (K) entfaellt, ihre Items stehen ab jetzt auf "Nie anfassen" (I)
+  for id, l in pairs(db.manual) do
+    if l == "K" then
+      db.manual[id] = "I"
+      db.manualTs[id] = time()
+    end
+  end
+  db.keepProtect = nil
 end
 
 -- Hunter-Modus: von Hand gesetzt, sonst an fuer Jaeger

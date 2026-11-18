@@ -8,7 +8,7 @@ Lasher-Farmhilfe für Düsterbruch Ost auf OctoWoW (Vanilla 1.12, SuperWoW und N
 
 *Lasher farm helper for Dire Maul East on OctoWoW (Vanilla 1.12). German and English, switch with `/bf lang de|en|auto`.*
 
-Version 0.4.1
+Version 0.5.0
 
 ## Erste Schritte
 
@@ -30,7 +30,8 @@ Alles Weitere steht im Fenster unter **Einstellungen**. Fährst du mit der Maus 
 - Warnung, wenn die Taschen fast voll sind.
 
 ### Listen und Sortierung
-- Fünf Listen: **Vendor** (wird verkauft), **Mail** (geht an den Bankalt), **Nie anfassen** (wird nie verkauft oder verschickt), **Behalten** (nur während der Session geschützt), **Unsortiert** (noch keine Entscheidung).
+- Vier Listen: **Vendor** (wird verkauft), **Mail** (geht an den Bankalt), **Nie anfassen** (wird nie verkauft oder verschickt), **Unsortiert** (noch keine Entscheidung).
+- **Automatisch einsortieren:** Knopf in der Liste Unsortiert. Alles mit AH-Preis kommt nach der Standardregel auf Mail oder Vendor, bei mehreren Mailchars fragt BananaFarm je Item nach dem Empfänger.
 - Standardregel: AH-Preis mindestens x-mal Händlerwert (Standard 1,5) und über dem Mindestpreis: Mail, sonst Vendor. Graue Items gehen auf Vendor. Von Hand zugeordnet schlägt immer die Automatik.
 - Alt+Klick auf ein Item in der Tasche öffnet die Auswahl der Listen. In der Liste verschieben farbige Knöpfe ein Item.
 - AH-Scan am Auktionshaus: gezielte Suche nach den bekannten Items, voller Marktpreis.
@@ -55,10 +56,17 @@ Alles Weitere steht im Fenster unter **Einstellungen**. Fährst du mit der Maus 
 - **Hunter-Modus** (für Jäger automatisch an): Leichen zählen mit, und an der Grenze (Standard 80) kommt eine Warnung.
 
 ### Sync mit dem Twink
-- Listen, AH-Preise und Resets werden mit dem Twink abgeglichen. Den Twink trägst du nur auf dem Farmchar ein, die Kopplung läuft automatisch. Beide müssen in einer Gruppe sein.
+- Listen, alle bekannten Items (auch unsortierte), AH-Preise und Resets werden mit dem Twink abgeglichen. Den Twink trägst du nur auf dem Farmchar ein, die Kopplung läuft automatisch. Beide müssen in einer Gruppe sein.
+- Prüfsummen statt Verlauf: Ein Vergleich kostet eine Nachricht, nur Abweichendes wird geschickt, verlorene Nachrichten werden beim nächsten Vergleich repariert. Änderungen von Hand gehen nach 2 Sekunden raus. `/bf sync status` zeigt den Zustand.
 
 ### Speedrun
-- Rundenstoppuhr in der Leiste, unabhängig von der Session. Rundenzeiten, Bestzeit, Blockzeit je Session und Posten in den Chat im Reiter Speedrun.
+- **Runde:** ein Instanz-Durchlauf. Die Stoppuhr startet beim Betreten von Düsterbruch von selbst (abschaltbar) und endet beim Instanz-Reset automatisch. Der Reset-Knopf verwirft eine laufende Zeit.
+- **Durchgang:** 5 Runden (Reset-Limit). Gespeichert werden die Rundenzeiten, die Spielzeit und die Gesamtzeit mit Reset-Pausen, die für Bestzeiten zählt.
+- Dashboard mit Kacheln, laufendem Durchgang, letzten Durchgängen und Posten in den Chat.
+
+### Lasher Championships (optional)
+- Bestenlisten mit deiner Gilde: schnellster Durchgang, Woche, Monat und gesamt, sortierbar nach Durchgängen, Bestzeit oder Gold (Gold nur, wenn du es teilst).
+- Jeden Sonntag zeigt ein Pop-up die Wochensieger. Wenige Nachrichten im Gildenkanal: beim Login und nach jedem Durchgang.
 
 ### Wunschliste
 - Item per Shift-Klick aufnehmen, je Mob Name und Droprate eintragen. BananaFarm zählt die Kills und zeigt die Chance bisher und wie viele Kills noch fehlen.
@@ -83,7 +91,7 @@ Alles Weitere steht im Fenster unter **Einstellungen**. Fährst du mit der Maus 
 | `/bf sell` | Vendorliste beim Händler verkaufen |
 | `/bf prices` | Ergebnis der Preisprüfung (`/bf prices reset`: neu prüfen) |
 | `/bf reset` | Instanzen zurücksetzen (wird mitgezählt) |
-| `/bf sync` | Abgleich mit dem Twink starten |
+| `/bf sync` | Abgleich mit dem Twink starten (`status`: Zustand, `debug`: Nachrichten zeigen) |
 | `/bf wish Item` | Wunschitem hinzufügen (Link per Shift-Klick einfügen) |
 | `/bf scan` | AH-Preise holen (am Auktionshaus) |
 | `/bf bar` | kleine Leiste ein- oder ausblenden (auch per Tastenbelegung) |

@@ -163,3 +163,32 @@ Fehler bitte im Wortlaut notieren (Chatzeilen, Lua-Fehler mit Dateiname und Zeil
 - [ ] Abfrage mit Nein: Beim nächsten Briefkasten wird wieder gefragt?
 - [ ] Abo pro Runde: Nach einem Reset steigt "Vorgemerkt" um den Betrag?
 - [ ] Auf einem Char eines anderen Realms: Fenster zeigt nur den Namen zum Kopieren?
+
+## 0.5.0: neu zu testen
+
+### Spenden
+- [ ] Auf einem anderen Char als Bareg (N'Zoth): zeigt das Fenster Einmalig und Abo? Unten steht "Erkannter Server: ...". Bitte den Text notieren.
+- [ ] Auf Bareg: Hinweis "Du bist selbst der Spendenempfänger"?
+
+### Sync
+- [ ] Beide Clients in einer Gruppe, Farmchar einloggen: nach etwa 10 s Chatzeile "Sync mit ...: alles gleich" oder "... übernommen"?
+- [ ] Item auf dem Farmchar von Hand zuordnen: ist es nach wenigen Sekunden beim Twink in derselben Liste?
+- [ ] Neues Item farmen, das unsortiert bleibt: steht es beim Twink in Unsortiert (evtl. erst als #ID, dann mit Namen)?
+- [ ] AH-Scan auf dem Twink: werden die unsortierten Items mitgescannt? Kommen die Preise beim Farmchar an?
+- [ ] Falls etwas fehlt: `/bf sync status` auf beiden Chars (Prüfsummen vergleichen) und mit `/bf sync debug` den Ablauf mitschneiden.
+
+### Unsortiert
+- [ ] Knopf "Automatisch einsortieren": Items mit lohnendem AH-Preis auf Mail, sonst Vendor; Items ohne AH-Preis bleiben?
+- [ ] Mit zwei oder mehr Mailchars: Abfrage je neuem Mail-Item?
+
+### Speedrun
+- [ ] Düsterbruch betreten: startet die Stoppuhr von selbst (Chatzeile)? Bitte den Zonennamen notieren, falls nicht.
+- [ ] Instanz-Reset (auch durch den Twink): Runde gespeichert, Uhr auf 0? Leiste zeigt "Durchgang n/5"?
+- [ ] Nach dem 5. Reset: Chatzeile "Durchgang fertig", Eintrag im Dashboard mit Gesamt- und Spielzeit?
+- [ ] Reset-Knopf der Stoppuhr: laufende Zeit verworfen, nichts gespeichert?
+- [ ] Dashboard: Kacheln, laufender Durchgang, Klick auf einen Durchgang zeigt die Runden. Bitte Screenshot.
+
+### Lasher Championships
+- [ ] In den Einstellungen anschalten (zwei Spieler in derselben Gilde): erscheinen beide in den Listen?
+- [ ] Sortieren nach Durchgängen, Bestzeit, Gold; Gold nur mit Haken "Mein Gold zeigen"?
+- [ ] Knopf "Wochensieger zeigen": Pop-up mit Podest-Icon und "Lasher Championships 2026". Am Sonntag kommt es von selbst (einmal).
