@@ -142,12 +142,22 @@ function Session:Stop()
   s.t0 = nil
   local total = self:Value()
   BF:Print(string.format(BF.T("MSG_SESSION_STOP"), BF.Duration(s.elapsed), BF.Money(total), BF.Money(self:PerHour())))
+  if BF.Speedrun then BF.Speedrun:OnSessionStop() end
   if BF.Donate then BF.Donate:OnSessionStop() end
   if BF.UI then BF.UI:Refresh() end
 end
 
+-- Knopf in Leiste und Hauptfenster: Stoppen nur nach Sicherheitsabfrage
 function Session:Toggle()
-  if self:Running() then self:Stop() else self:Start() end
+  if not self:Running() then return self:Start() end
+  if not BF.UI then return self:Stop() end
+  local text = string.format(BF.T("ASK_STOP_SESSION"), BF.Duration(self:Elapsed()), BF.Money(self:Value()))
+  local d = BananaFarmDB.speedrun
+  local n = d and d.heat and d.heat.laps and table.getn(d.heat.laps) or 0
+  if BF:Enabled("speedrun") and n > 0 and n < BF.Resets:Limit() then
+    text = text .. "\n" .. string.format(BF.T("ASK_STOP_HEAT"), n, BF.Resets:Limit())
+  end
+  BF.UI:Confirm("session", text, function() Session:Stop() end)
 end
 
 function Session:Elapsed()

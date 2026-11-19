@@ -76,22 +76,26 @@ function R:Add()
   if n >= limit then BF:Error(BF.T("MSG_RESET_LIMIT")) end
   BF.Session:NewRun()
   -- Speedrun: Runde endet mit dem Reset, Stoppuhr auf 0
-  if BF.Speedrun then BF.Speedrun:OnReset() end
+  if BF.Speedrun then BF.Speedrun:OnResetAt(ts) end
   if BF.UI then BF.UI:Refresh() end
 end
 
 -- Reset, den der Sync-Partner gemeldet hat (er hat die Instanz zurueckgesetzt): zaehlt wie ein
 -- eigener Reset und beginnt in der Session einen neuen Run.
+-- Liefert true, wenn der Reset neu war. Kommt auch aus dem Sync beim Einloggen (Reset des Twinks,
+-- waehrend man ausgeloggt war): dann zaehlt er rueckwirkend zur Reset-Uhrzeit.
 function R:Remote(ts)
-  if not BF:Enabled("resets") or type(ts) ~= "number" then return end
-  if not self:Merge(ts) then return end
+  if not BF:Enabled("resets") or type(ts) ~= "number" then return false end
+  if not self:Merge(ts) then return false end
   local n, limit = self:Count(), self:Limit()
   BF:Print(string.format(BF.T("MSG_RESET_PARTNER"), n, limit))
   if n >= limit then BF:Error(BF.T("MSG_RESET_LIMIT")) end
-  BF.Session:NewRun()
-  -- Speedrun: Runde endet mit dem Reset, Stoppuhr auf 0
-  if BF.Speedrun then BF.Speedrun:OnReset() end
+  -- nur Resets nach dem Start der Session beginnen dort einen neuen Run
+  if BF.Session:Running() and ts >= (BananaFarmDB.session.date or 0) then BF.Session:NewRun() end
+  -- Speedrun: Lap endet zur Reset-Uhrzeit, die naechste beginnt im selben Moment
+  if BF.Speedrun then BF.Speedrun:OnResetAt(ts) end
   if BF.UI then BF.UI:Refresh() end
+  return true
 end
 
 -- Muster aus der Client-Meldung "%s has been reset." (je Sprache anders) bauen
@@ -112,6 +116,7 @@ BF:On("CHAT_MSG_SYSTEM", function(msg)
   if type(msg) ~= "string" then return end
   for i = 1, getn(patterns) do
     if string.find(msg, patterns[i]) then
+      R.answer = msg
       R:Add()
       return
     end
@@ -119,10 +124,57 @@ BF:On("CHAT_MSG_SYSTEM", function(msg)
 end)
 
 -- /bf reset
+-- Knopf "Reset inst." (Twink) und /bf reset. Auf OctoWoW tat der direkte Aufruf von
+-- ResetInstances() nichts, der Rechtsklick aufs eigene Portraet aber schon. Deshalb denselben Weg
+-- wie das Portraet-Menue gehen: erst dessen Bestaetigungsdialog, dann den Menue-Eintrag
+-- nachspielen, zuletzt der direkte Aufruf. Danach 3 s auf eine Antwort warten und sie zeigen.
 function R:Do()
-  if not ResetInstances then
-    BF:Print(BF.T("ERR_NO_RESET"))
+  if GetNumPartyMembers() > 0 and IsPartyLeader and not IsPartyLeader() then
+    BF:Error(BF.T("ERR_RESET_LEADER"))
     return
   end
-  ResetInstances()
+  self.asked = GetTime()
+  self.answer = nil
+  local way
+  local dlg = StaticPopupDialogs and StaticPopupDialogs["CONFIRM_RESET_INSTANCES"]
+  if dlg and type(dlg.OnAccept) == "function" and pcall(dlg.OnAccept) then
+    way = "dialog"
+  elseif UnitPopup_OnClick and UnitPopupButtons and UnitPopupButtons["RESET_INSTANCES"] then
+    -- Menue-Eintrag "Instanzen zuruecksetzen" am eigenen Portraet nachspielen
+    local oldThis, oldMenu = this, UIDROPDOWNMENU_INIT_MENU
+    this = { value = "RESET_INSTANCES" }
+    UIDROPDOWNMENU_INIT_MENU = "PlayerFrameDropDown"
+    if PlayerFrameDropDown then PlayerFrameDropDown.unit = "player" end
+    if pcall(UnitPopup_OnClick) then way = "menu" end
+    this, UIDROPDOWNMENU_INIT_MENU = oldThis, oldMenu
+  end
+  if not way then
+    if not ResetInstances then
+      BF:Print(BF.T("ERR_NO_RESET"))
+      return
+    end
+    ResetInstances()
+    way = "direct"
+  end
+  self.way = way
+  BF:After(3, function()
+    if R.answer then return end
+    BF:Error(string.format(BF.T("MSG_RESET_NOANSWER"), R.way or "?"))
+  end, "resetanswer")
 end
+
+-- Antwort des Servers auf den Knopf: Fehlermeldung (rot) oder Systemzeile
+BF:On("UI_ERROR_MESSAGE", function(msg)
+  if R.asked and GetTime() - R.asked < 3 and not R.answer then
+    R.answer = msg
+    BF:Error("-> " .. tostring(msg))
+  end
+end)
+
+-- Systemzeile kurz nach dem Knopf (z. B. "Spieler noch in der Instanz") als Antwort zeigen
+BF:On("CHAT_MSG_SYSTEM", function(msg)
+  if type(msg) ~= "string" or not R.asked or R.answer then return end
+  if GetTime() - R.asked > 3 then return end
+  R.answer = msg
+  BF:Print("-> " .. msg)
+end)

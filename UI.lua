@@ -287,7 +287,7 @@ function UI:Init()
   self:BuildSetupStep()
   BF.Lists:HookBags()
   self:Refresh()
-  if not BananaFarmDB.setupDone then self:ShowSetup() end
+  if not BananaFarmDB.setupDone then self:ShowSetupStep("lang") end
 end
 
 function UI:BuildMain()
@@ -1114,6 +1114,21 @@ function UI:BuildSetupStep()
   skip:SetPoint("BOTTOMLEFT", f, "BOTTOM", 4, 14)
   f.nextBtn = nextBtn
   f.skip = skip
+  -- Schritt Sprache (beim ersten Start vor den Modulen)
+  f.lang = {}
+  local ldefs = { { "de", "Deutsch" }, { "en", "English" }, { "auto", "LANG_AUTO" } }
+  for i = 1, 3 do
+    local code = ldefs[i][1]
+    local b = self:Button(f, 112, 26, ldefs[i][2], function()
+      UI:SetLanguage(code)
+      f.active = false
+      f:Hide()
+      UI:ShowSetup()
+    end, i == 3 and "flat" or "primary")
+    b:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16 + (i - 1) * 124, 16)
+    b:Hide()
+    f.lang[i] = b
+  end
   -- Escape zaehlt als Ueberspringen
   tinsert(UISpecialFrames, "BananaFarmSetupStep")
   f:SetScript("OnHide", function() UI:SetupStepDone(false) end)
@@ -1125,6 +1140,20 @@ function UI:ShowSetupStep(kind)
   local f = self.step
   f.kind = kind
   f.active = true
+  for i = 1, 3 do f.lang[i]:Hide() end
+  -- erster Schritt: Sprache waehlen (drei Knoepfe, kein Eingabefeld)
+  if kind == "lang" then
+    f.title:SetText("BananaFarm: Sprache / Language")
+    f.text:SetText(T("SETUP_LANG_TEXT"))
+    f:SetHeight(150)
+    f.edit:Hide()
+    f.skip:Hide()
+    f.nextBtn:Hide()
+    for i = 1, 3 do f.lang[i]:Show() end
+    f:Show()
+    return
+  end
+  f.nextBtn:Show()
   -- letzter Schritt: kurze Anleitung ohne Eingabefeld
   if kind == "howto" then
     f.title:SetText(T("SETUP_HOWTO_TITLE"))
@@ -1160,6 +1189,12 @@ function UI:SetupStepDone(save)
   local v = BF.Trim(f.edit:GetText() or "")
   f:Hide()
   if f.kind == "howto" then return end
+  -- Sprache per Escape uebersprungen: automatisch (Spielsprache), weiter mit den Modulen
+  if f.kind == "lang" then
+    f:Hide()
+    self:ShowSetup()
+    return
+  end
   if save and v ~= "" then
     if f.kind == "twink" then BF:SetBankAlt(v) else BF.Mail:SetTargets(v) end
   end
@@ -1559,6 +1594,11 @@ function UI:BuildSpeedrun(p)
   local h1 = self:Font(m, 12, C.gold)
   h1:SetPoint("TOPLEFT", m, "TOPLEFT", 16, -92)
   sr.curTitle = h1
+  -- laufenden (unvollstaendigen) Durchgang wegwerfen
+  sr.discard = self:Button(m, 110, 18, "BTN_DISCARD", function()
+    UI:Confirm("discard", T("ASK_DISCARD"), function() BF.Speedrun:DiscardHeat() end)
+  end, "danger")
+  sr.discard:SetPoint("TOPRIGHT", m, "TOPRIGHT", -14, -88)
   for i = 1, 5 do
     local bx = self:Tile(m, 84, 42, nil)
     bx:SetPoint("TOPLEFT", m, "TOPLEFT", 14 + (i - 1) * 89, -108)
@@ -1756,6 +1796,7 @@ function UI:RefreshSpeedrun()
   local heat = d.heat or { laps = {} }
   local hl = heat.laps or {}
   sr.curTitle:SetText(string.format(T("SR_CURRENT"), getn(hl), limit))
+  if getn(hl) > 0 or SR:Running() then sr.discard:Show() else sr.discard:Hide() end
   for i = 1, 5 do
     local bx = sr.boxes[i]
     if i > limit then
@@ -1966,29 +2007,32 @@ function UI:RefreshSession()
     -- unterste Zeile: Rundenstoppuhr
     local b = self.bar
     if BF:Enabled("speedrun") then
-      b:SetHeight(67)
+      b:SetHeight(60)
       b.sep:Show()
-      b.swBtn:Show()
-      b.swReset:Show()
       b.text3:Show()
+      -- Lap 1 xx:xx | Lap 2 xx:xx | ... : fertige Laps weiss, die laufende gold, jede erscheint erst,
+      -- wenn sie beginnt
       local SR = BF.Speedrun
-      local swRun = SR:Running()
-      b.swBtn.fs:SetText(T(swRun and "BTN_STOP" or "BTN_START"))
-      local col = swRun and "|cffffd100" or "|cffffffff"
-      local hn = getn((BananaFarmDB.speedrun.heat or {}).laps or {})
-      local line3 = gray .. T("BAR_LAP") .. "|r " .. col .. BF.Duration(SR:Elapsed()) .. "|r"
-        .. "   " .. gray .. string.format(T("BAR_HEAT"), hn, BF.Resets:Limit()) .. "|r"
-      local n, best, _, last = SR:LapStats()
-      if n > 0 then
-        line3 = line3 .. "   " .. gray .. T("BAR_LAST") .. "|r " .. BF.Duration(last)
-          .. "   " .. gray .. T("BAR_BEST") .. "|r " .. BF.Duration(best)
+      local hl = (BananaFarmDB.speedrun.heat or {}).laps or {}
+      local parts = {}
+      for i = 1, getn(hl) do
+        table.insert(parts, gray .. string.format(T("BAR_LAPN"), i) .. "|r " .. BF.Duration(hl[i].t))
+      end
+      if SR:Running() then
+        table.insert(parts, "|cffffd100" .. string.format(T("BAR_LAPN"), getn(hl) + 1) .. " " .. BF.Duration(SR:Elapsed()) .. "|r")
+      end
+      local line3
+      if getn(parts) > 0 then
+        line3 = table.concat(parts, gray .. "  ||  |r")
+      elseif S:Running() and BananaFarmDB.srAutoStart then
+        line3 = gray .. T("BAR_LAP_WAIT") .. "|r"
+      else
+        line3 = gray .. T("BAR_LAP_NONE") .. "|r"
       end
       b.text3:SetText(line3)
     else
       b:SetHeight(40)
       b.sep:Hide()
-      b.swBtn:Hide()
-      b.swReset:Hide()
       b.text3:Hide()
     end
     -- Breite folgt dem Inhalt: waechst sofort, schrumpft erst bei deutlichem Platzgewinn
@@ -1998,7 +2042,7 @@ function UI:RefreshSession()
     local need = 4 + 48 + 8 + math.max(b.text:GetStringWidth() or 0, b.text2:GetStringWidth() or 0) + 8 + 22 + 4
     if twink then need = need + 72 end
     if BF:Enabled("speedrun") then
-      local need3 = 4 + 48 + 4 + 40 + 8 + (b.text3:GetStringWidth() or 0) + 8
+      local need3 = 10 + (b.text3:GetStringWidth() or 0) + 10
       if need3 > need then need = need3 end
     end
     need = math.ceil(need)
@@ -2061,14 +2105,9 @@ function UI:BuildBar()
   f.text2:SetJustifyH("LEFT")
   -- unterste Zeile: Rundenstoppuhr (Modul Speedrun), unabhaengig von der Session-Uhr
   f.sep = self:HLine(f, -40, 6, -6)
-  f.swBtn = self:Button(f, 48, 18, "BTN_START", function() BF.Speedrun:Toggle() end, "primary")
-  f.swBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 4, 4)
-  f.swReset = self:Button(f, 40, 18, "BTN_SW_RESET", function() BF.Speedrun:Reset() end, "flat")
-  f.swReset:SetPoint("LEFT", f.swBtn, "RIGHT", 4, 0)
-  self:Tip(f.swBtn, "BAR_LAP", "TT_LAP")
-  self:Tip(f.swReset, "BTN_SW_RESET", "TT_LAP_RESET")
+  -- keine Knoepfe mehr: Laps laufen vollautomatisch (Portal, Instanz-Reset, Session-Stopp)
   f.text3 = self:Font(f, 10)
-  f.text3:SetPoint("LEFT", f.swReset, "RIGHT", 8, 0)
+  f.text3:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 10, 8)
   f.text3:SetJustifyH("LEFT")
   f.tick = 0
   f:SetScript("OnUpdate", function()
@@ -2229,7 +2268,7 @@ end
 -- Abfragefenster (Ja / Nein)
 -- ------------------------------------------------------------
 function UI:BuildConfirm()
-  local f = self:Window("BananaFarmConfirm", 340, 110)
+  local f = self:Window("BananaFarmConfirm", 340, 130)
   self.confirm = f
   if not BananaFarmDB.pos["BananaFarmConfirm"] then f:SetPoint("CENTER", UIParent, "CENTER", 0, 120) end
   local title = self:Font(f, 13, C.gold, FONT_TITLE)

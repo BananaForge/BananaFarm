@@ -1,17 +1,17 @@
--- BananaFarm Speedrun (0.5.0): Rundenstoppuhr, Runden und Durchgaenge.
+-- BananaFarm Speedrun (0.6.0): Laps und Durchgaenge, vollautomatisch.
 --
--- Runde = ein Instanz-Durchlauf. Die Stoppuhr laeuft unabhaengig von der Session-Uhr.
---   Start: von Hand oder automatisch beim Betreten von Duesterbruch (Option srAutoStart, erkennt
---   "Dire Maul" und "Duesterbruch"). Ist der Autostart aus, startet die erste Runde zusammen mit
---   der Session (Session:Start), weitere Runden von Hand.
---   Ende (Runde wird gespeichert): Stopp-Knopf, Instanz-Reset (automatisch, auch wenn der Partner
---   resettet) oder Logout. Nach einem Instanz-Reset steht die Uhr wieder auf 0.
---   Reset-Knopf: verwirft die laufende Zeit, ohne zu speichern (Fehlstart).
---   /reload unterbricht nur (Luecke unter 90 s).
--- Durchgang = so viele Runden wie das Reset-Limit (Standard 5). Gespeichert werden die
---   Rundenzeiten, die Spielzeit (Summe der Runden) und die Gesamtzeit vom Start der ersten bis
---   zum Ende der letzten Runde, mit Reset-Pausen. Die Gesamtzeit zaehlt fuer Bestzeiten und die
---   Gilden-Bestenliste. Gold des Durchgangs aus der Session, falls sie lief.
+-- Lap = ein Instanz-Durchlauf. Gemessen wird echte Uhrzeit (time()), Ausloggen haelt nichts an.
+--   Lap 1 startet beim Betreten von Duesterbruch / Dire Maul, wenn eine Session laeuft
+--   (Option srAutoStart). Ist der Autostart aus, startet Lap 1 mit der Session.
+--   Lap 2 bis 5 starten beim Instanz-Reset: Die laufende Lap endet genau zur Uhrzeit des Resets,
+--   die naechste beginnt im selben Moment. Das gilt auch fuer Resets des Twinks, die erst beim
+--   Einloggen per Sync ankommen (rueckwirkend zur Reset-Uhrzeit).
+--   Nach dem letzten Reset (Reset-Limit, Standard 5) ist der Durchgang fertig. Die naechste Lap 1
+--   startet wieder am Portal (ohne Autostart: direkt mit dem Reset).
+--   Session-Stopp beendet die Uhr; ein unvollstaendiger Durchgang wird dabei automatisch geloescht.
+-- Durchgang: Rundenzeiten, Spielzeit (Summe der Laps) und Gesamtzeit (Start Lap 1 bis Ende der
+--   letzten Lap). Da Laps lueckenlos aneinanderliegen, sind beide meist gleich. Die Gesamtzeit
+--   zaehlt fuer Bestzeiten und die Gilden-Bestenliste. Gold des Durchgangs aus der Session.
 
 local BF = BananaFarm
 local getn = table.getn
@@ -35,111 +35,127 @@ local function sr()
   d.heats = d.heats or {}
   d.heat = d.heat or { laps = {} }
   d.heat.laps = d.heat.laps or {}
+  d.laps = d.laps or {}
+  d.sw = d.sw or {}
+  -- Stand vor 0.6.0 (Uhr mit Pausen und Durchlauf-Zaehler): einmal auf 0
+  if d.v ~= 2 then
+    d.v = 2
+    d.sw = {}
+    d.heat = { laps = {} }
+  end
   return d
 end
 
 -- ------------------------------------------------------------
--- Rundenstoppuhr
+-- Stoppuhr
 -- ------------------------------------------------------------
 function SR:Running()
-  return BananaFarmDB.speedrun.sw.running and true or false
+  return sr().sw.running and true or false
 end
 
+-- Zeit der laufenden Lap (Sekunden), 0 wenn keine laeuft
 function SR:Elapsed()
-  local sw = BananaFarmDB.speedrun.sw
-  local e = sw.elapsed or 0
-  if sw.running and sw.t0 then e = e + (time() - sw.t0) end
+  local sw = sr().sw
+  if not sw.running or not sw.t0 then return 0 end
+  local e = time() - sw.t0
+  if e < 0 then e = 0 end
   return e
 end
 
--- Runde speichern (je Durchlauf der Uhr ein Eintrag; Stopp und Weiterlaufen ersetzt ihn)
-function SR:SaveLap()
-  local d = sr()
-  local sw = d.sw
-  local t = self:Elapsed()
-  if t <= 0 then return nil end
-  local laps = d.laps
-  for i = getn(laps), 1, -1 do
-    if laps[i].cyc == sw.cycle then
-      table.remove(laps, i)
-      break
-    end
-  end
-  table.insert(laps, { t = t, at = time(), cyc = sw.cycle })
-  while getn(laps) > MAX_LAPS do table.remove(laps, 1) end
-  -- auch im laufenden Durchgang
-  local hl = d.heat.laps
-  for i = getn(hl), 1, -1 do
-    if hl[i].cyc == sw.cycle then
-      table.remove(hl, i)
-      break
-    end
-  end
-  table.insert(hl, { t = t, at = time(), cyc = sw.cycle })
-  return t
-end
-
-function SR:Start()
+-- naechste Lap beginnen (at = Startzeitpunkt, Standard jetzt)
+function SR:StartLap(at)
   if not BF:Enabled("speedrun") then return end
   local d = sr()
   local sw = d.sw
   if sw.running then return end
-  -- erste Runde eines Durchgangs: Startzeit und Goldstand merken
-  if getn(d.heat.laps) == 0 and not d.heat.start then
-    d.heat.start = time()
-    if BF.Session:Running() then d.heat.gold0 = BF.Session:Value() end
+  at = at or time()
+  if getn(d.heat.laps) == 0 then
+    d.heat.start = at
+    d.heat.gold0 = BF.Session:Running() and BF.Session:Value() or nil
   end
   sw.running = true
-  sw.t0 = time()
-  sw.seen = sw.t0
-  sw.out = nil
+  sw.t0 = at
   refresh()
 end
 
-function SR:Stop(silent)
-  local sw = BananaFarmDB.speedrun.sw
-  if not sw.running then return end
-  sw.elapsed = self:Elapsed()
-  sw.running = false
-  sw.t0 = nil
-  local t = self:SaveLap()
-  if t and not silent then BF:Print(string.format(BF.T("MSG_SR_LAP"), BF.Duration(t))) end
-  refresh()
+-- frueherer Name (Leiste/Befehle): Start von Hand
+function SR:Start()
+  self:StartLap()
 end
 
--- naechste Runde: Uhr auf 0, Durchgang fertig, wenn genug Runden beisammen sind
-function SR:NewCycle()
+-- laufende Lap zum Zeitpunkt "at" beenden und speichern. Liefert die Lap oder nil.
+function SR:EndLap(at)
   local d = sr()
   local sw = d.sw
+  if not sw.running or not sw.t0 then return nil end
+  at = at or time()
+  if at < sw.t0 then return nil end
+  local lap = { t = at - sw.t0, at = at, start = sw.t0 }
   sw.running = false
   sw.t0 = nil
-  sw.elapsed = 0
-  sw.cycle = (sw.cycle or 1) + 1
-  if getn(d.heat.laps) >= BF.Resets:Limit() then self:CompleteHeat() end
+  table.insert(d.heat.laps, lap)
+  table.insert(d.laps, lap)
+  while getn(d.laps) > MAX_LAPS do table.remove(d.laps, 1) end
+  BF:Print(string.format(BF.T("MSG_SR_LAP2"), getn(d.heat.laps), BF.Duration(lap.t)))
+  return lap
+end
+
+-- Instanz-Reset zur Uhrzeit ts (eigener Reset, Partner online oder per Sync nach dem Einloggen)
+function SR:OnResetAt(ts)
+  if not BF:Enabled("speedrun") then return end
+  ts = ts or time()
+  local d = sr()
+  if not d.sw.running or not d.sw.t0 or ts < d.sw.t0 then return end
+  if not self:EndLap(ts) then return end
+  if getn(d.heat.laps) >= BF.Resets:Limit() then
+    self:CompleteHeat()
+    -- ohne Autostart gibt es kein Portal-Signal: naechster Durchgang beginnt mit dem Reset
+    if not BananaFarmDB.srAutoStart and BF.Session:Running() then self:StartLap(ts) end
+  else
+    self:StartLap(ts)
+  end
   refresh()
 end
 
--- Reset-Knopf: laufende Zeit verwerfen, nichts speichern
-function SR:Reset()
-  local sw = BananaFarmDB.speedrun.sw
-  if sw.running and self:Elapsed() > 0 then BF:Print(BF.T("MSG_SR_DISCARD")) end
-  self:NewCycle()
-end
-
-function SR:Toggle()
-  if self:Running() then self:Stop() else self:Start() end
-end
-
--- Instanz-Reset (eigener oder vom Partner): Runde beenden und Uhr auf 0
-function SR:OnReset()
-  if not BF:Enabled("speedrun") then return end
-  local sw = BananaFarmDB.speedrun.sw
-  if sw.running then
-    self:Stop()
-    self:NewCycle()
-  elseif (sw.elapsed or 0) > 0 then
-    self:NewCycle()
+-- unvollstaendigen Durchgang loeschen (auch seine Laps aus der Rundenliste)
+function SR:DiscardHeat(quiet)
+  local d = sr()
+  local hl = d.heat.laps
+  local n = getn(hl)
+  for i = 1, n do
+    for j = getn(d.laps), 1, -1 do
+      if d.laps[j] == hl[i] then
+        table.remove(d.laps, j)
+        break
+      end
+    end
   end
+  d.heat = { laps = {} }
+  d.sw.running = false
+  d.sw.t0 = nil
+  if n > 0 and not quiet then BF:Print(string.format(BF.T("MSG_SR_DISCARDED"), n)) end
+  refresh()
+end
+
+-- Session gestartet: ohne Autostart beginnt Lap 1 sofort
+function SR:OnSessionStart()
+  if not BF:Enabled("speedrun") or BananaFarmDB.srAutoStart then return end
+  if self:Running() then return end
+  self:StartLap()
+  BF:Print(BF.T("MSG_SR_SESSIONSTART"))
+end
+
+-- Session beendet: Uhr aus, unvollstaendiger Durchgang wird geloescht
+function SR:OnSessionStop()
+  local d = sr()
+  d.sw.running = false
+  d.sw.t0 = nil
+  if getn(d.heat.laps) > 0 and getn(d.heat.laps) < BF.Resets:Limit() then
+    self:DiscardHeat()
+  else
+    d.heat = { laps = {} }
+  end
+  refresh()
 end
 
 -- Durchgang abschliessen
@@ -154,7 +170,7 @@ function SR:CompleteHeat()
     play = play + h.laps[i].t
   end
   local done = h.laps[n].at
-  local start = h.start or (h.laps[1].at - h.laps[1].t)
+  local start = h.start or h.laps[1].start or (h.laps[1].at - h.laps[1].t)
   local total = done - start
   if total < play then total = play end
   local gold
@@ -162,8 +178,7 @@ function SR:CompleteHeat()
     gold = BF.Session:Value() - h.gold0
     if gold < 0 then gold = 0 end
   end
-  local e = { at = done, start = start, laps = laps, play = play, total = total, gold = gold }
-  table.insert(d.heats, e)
+  table.insert(d.heats, { at = done, start = start, laps = laps, play = play, total = total, gold = gold })
   while getn(d.heats) > MAX_HEATS do table.remove(d.heats, 1) end
   d.heat = { laps = {} }
   local best = self:BestHeat()
@@ -173,68 +188,22 @@ function SR:CompleteHeat()
   if BF.Champ then BF.Champ:OnHeat() end
 end
 
--- nach dem Laden: /reload unterbricht nur, Logout oder Absturz beendet die Runde
+-- nach dem Laden: nichts anzuhalten, die Lap laeuft nach Uhrzeit weiter
 function SR:OnLoad()
-  local d = sr()
-  local sw = d.sw
-  if not sw.running then return end
-  local ref = sw.out or sw.seen or time()
-  if time() - ref < 90 then
-    sw.t0 = time()
-    sw.out = nil
-    return
-  end
-  local e = sw.elapsed or 0
-  if sw.t0 then e = e + math.max(0, (sw.seen or sw.t0) - sw.t0) end
-  sw.elapsed = e
-  sw.running = false
-  sw.t0 = nil
-  sw.out = nil
-  self:SaveLap()
-  self:NewCycle()
+  sr()
 end
 
-BF:On("PLAYER_LOGOUT", function()
-  if not BF:Enabled("speedrun") then return end
-  local sw = BananaFarmDB.speedrun.sw
-  if sw.running then
-    sw.elapsed = SR:Elapsed()
-    sw.t0 = nil
-    sw.out = time()
-  end
-end)
-
--- Lebenszeichen alle 10 s, damit ein Absturz die Rundenzeit nicht verschluckt
-local tick = CreateFrame("Frame")
-tick.t = 0
-tick:SetScript("OnUpdate", function()
-  this.t = this.t + (arg1 or 0)
-  if this.t < 10 then return end
-  this.t = 0
-  if not BF.ready then return end
-  local sw = BananaFarmDB.speedrun.sw
-  if sw.running then sw.seen = time() end
-end)
-
--- Autostart beim Betreten von Duesterbruch (nur wenn die Uhr auf 0 steht)
+-- Lap 1 beim Betreten von Duesterbruch (Session laeuft, kein Durchgang offen)
 function SR:CheckZone()
   if not BF.ready or not BF:Enabled("speedrun") or not BananaFarmDB.srAutoStart then return end
+  if not BF.Session:Running() then return end
   if not IsInInstance or not IsInInstance() then return end
   local zone = string.lower((GetRealZoneText and GetRealZoneText()) or (GetZoneText and GetZoneText()) or "")
   if not DM_ZONES[zone] then return end
-  local sw = BananaFarmDB.speedrun.sw
-  if sw.running or (sw.elapsed or 0) > 0 then return end
-  self:Start()
+  local d = sr()
+  if d.sw.running or getn(d.heat.laps) > 0 then return end
+  self:StartLap()
   BF:Print(BF.T("MSG_SR_AUTOSTART"))
-end
-
--- Autostart aus: die erste Runde startet zusammen mit der Session (wenn die Uhr auf 0 steht)
-function SR:OnSessionStart()
-  if not BF:Enabled("speedrun") or BananaFarmDB.srAutoStart then return end
-  local sw = BananaFarmDB.speedrun.sw
-  if sw.running or (sw.elapsed or 0) > 0 then return end
-  self:Start()
-  BF:Print(BF.T("MSG_SR_SESSIONSTART"))
 end
 
 BF:On("ZONE_CHANGED_NEW_AREA", function() BF:After(1, function() SR:CheckZone() end, "srzone") end)

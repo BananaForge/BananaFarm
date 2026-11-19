@@ -192,3 +192,19 @@ Fehler bitte im Wortlaut notieren (Chatzeilen, Lua-Fehler mit Dateiname und Zeil
 - [ ] In den Einstellungen anschalten (zwei Spieler in derselben Gilde): erscheinen beide in den Listen?
 - [ ] Sortieren nach Durchgängen, Bestzeit, Gold; Gold nur mit Haken "Mein Gold zeigen"?
 - [ ] Knopf "Wochensieger zeigen": Pop-up mit Podest-Icon und "Lasher Championships 2026". Am Sonntag kommt es von selbst (einmal).
+
+## 0.6.0: neu zu testen
+
+### Stoppuhr
+- [ ] Session starten, Düsterbruch betreten: Leiste zeigt "Lap 1 0:01" in Gold?
+- [ ] Ausloggen, Twink resettet, wieder einloggen: Nach etwa 10 bis 20 s ist Lap 1 mit der Zeit bis zum Reset gespeichert und Lap 2 läuft seit dem Reset (nicht seit dem Einloggen)?
+- [ ] Twink resettet, während du online bist: Lap wechselt sofort?
+- [ ] Nach dem 5. Reset: Chatzeile "Durchgang fertig", Leiste wartet aufs Portal, beim Betreten startet Lap 1 neu?
+- [ ] Session stoppen: Abfrage mit Dauer und Wert; bei unvollständigem Durchgang der Hinweis, dass er gelöscht wird. Danach Durchgang weg, Laps weg?
+- [ ] Knopf "Verwerfen" im Speedrun-Reiter.
+
+### Einrichtung
+- [ ] Neuer Char oder `BananaFarmDB.setupDone = nil` (/reload): erstes Fenster fragt nach der Sprache?
+
+### Reset inst. (Twink)
+- [ ] Klick: Wird die Instanz zurückgesetzt? Welche Chatzeile erscheint ("-> ...")? Falls "keine Antwort": `/bf probe`, Abschnitt "Instanz-Reset" schicken.

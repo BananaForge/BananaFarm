@@ -530,8 +530,9 @@ function Sync:OnMessage(msg, sender)
     self:Received()
 
   elseif kind == "T" then
+    -- neue Resets wie eine Reset-Nachricht behandeln (Run, Session, Speedrun-Lap zur Reset-Uhrzeit)
     for ts in string.gfind(body, "(%d+)") do
-      if BF.Resets:Merge(tonumber(ts)) then self.rx.T = self.rx.T + 1 end
+      if BF.Resets:Remote(tonumber(ts)) then self.rx.T = self.rx.T + 1 end
     end
     self:Received()
 

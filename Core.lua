@@ -9,7 +9,7 @@
 BananaFarm = {}
 local BF = BananaFarm
 
-BF.VERSION = "0.5.1"
+BF.VERSION = "0.6.0"
 BF.ICON = "Interface\\AddOns\\BananaFarm\\Icon"
 BF.CHAMP_ICON = "Interface\\AddOns\\BananaFarm\\Champions"
 

@@ -8,7 +8,7 @@ Lasher-Farmhilfe für Düsterbruch Ost auf OctoWoW (Vanilla 1.12, SuperWoW und N
 
 *Lasher farm helper for Dire Maul East on OctoWoW (Vanilla 1.12). German and English, switch with `/bf lang de|en|auto`.*
 
-Version 0.5.0
+Version 0.6.0
 
 ## Erste Schritte
 
@@ -60,9 +60,10 @@ Alles Weitere steht im Fenster unter **Einstellungen**. Fährst du mit der Maus 
 - Prüfsummen statt Verlauf: Ein Vergleich kostet eine Nachricht, nur Abweichendes wird geschickt, verlorene Nachrichten werden beim nächsten Vergleich repariert. Änderungen von Hand gehen nach 2 Sekunden raus. `/bf sync status` zeigt den Zustand.
 
 ### Speedrun
-- **Runde:** ein Instanz-Durchlauf. Die Stoppuhr startet beim Betreten von Düsterbruch von selbst (abschaltbar) und endet beim Instanz-Reset automatisch. Der Reset-Knopf verwirft eine laufende Zeit.
-- **Durchgang:** 5 Runden (Reset-Limit). Gespeichert werden die Rundenzeiten, die Spielzeit und die Gesamtzeit mit Reset-Pausen, die für Bestzeiten zählt.
-- Dashboard mit Kacheln, laufendem Durchgang, letzten Durchgängen und Posten in den Chat.
+- **Vollautomatisch:** Session starten, Düsterbruch betreten: Lap 1 läuft. Jeder Instanz-Reset (auch durch den Twink, auch während du ausgeloggt bist) beendet die Lap genau zur Reset-Uhrzeit und startet die nächste. Ausloggen hält die Uhr nicht an.
+- **Durchgang:** 5 Laps (Reset-Limit). Danach startet die nächste Lap 1 wieder am Portal. Session-Stopp löscht einen unvollständigen Durchgang.
+- Die Leiste zeigt `Lap 1 xx:xx | Lap 2 xx:xx | ...`, die laufende Lap in Gold.
+- Dashboard mit Kacheln, laufendem Durchgang (Knopf Verwerfen), letzten Durchgängen und Posten in den Chat.
 
 ### Lasher Championships (optional)
 - Bestenlisten mit deiner Gilde: schnellster Durchgang, Woche, Monat und gesamt, sortierbar nach Durchgängen, Bestzeit oder Gold (Gold nur, wenn du es teilst).
