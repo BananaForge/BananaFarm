@@ -24,13 +24,14 @@ end
 
 -- Die Zaehlung laeuft auch fuer die Wunschliste (Kills), die Anzeige haengt am Modul pulls
 function Pulls:Active()
-  return BF:Enabled("pulls") or BF:Enabled("wish")
+  return BF:Enabled("pulls") or BF:Enabled("wish") or BF:Enabled("speedrun")
 end
 
 -- ein Mob aus meiner Zaehlung ist gestorben
 function Pulls:Killed(g)
   local ok, name = pcall(UnitName, g)
   if ok and name and BF.Wish then BF.Wish:OnKill(name) end
+  if ok and name and BF.Speedrun then BF.Speedrun:OnKill(name) end
 end
 
 function Pulls:Limit()

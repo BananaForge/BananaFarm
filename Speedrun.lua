@@ -23,6 +23,8 @@ local SR = BF.Speedrun
 SR.CHANNELS = { "PARTY", "RAID", "GUILD", "SAY" }
 local MAX_LAPS = 200
 local MAX_HEATS = 200
+-- Lasher, die pro Lap gezaehlt werden (Kleinbuchstaben; zusaetzlich zaehlt alles mit "lasher" im Namen)
+SR.LASHERS = { ["whip lasher"] = true }
 -- Zonenname von Duesterbruch in den Client-Sprachen (fuer den Autostart)
 local DM_ZONES = { ["dire maul"] = true, ["düsterbruch"] = true, ["hache-tripes"] = true, ["la masacre"] = true }
 
@@ -75,8 +77,38 @@ function SR:StartLap(at)
   end
   sw.running = true
   sw.t0 = at
+  -- Zaehler der Lap: Whip Lasher, alle Kills, Beutewert (Session-Wert zu Beginn)
+  sw.k, sw.ka = 0, 0
+  sw.l0 = BF.Session:Running() and BF.Session:Value() or nil
+  if getn(d.heat.laps) == 0 then
+    d.heat.hid = tostring(at)
+    if BF.Event then BF.Event:OnHeatStart(d.heat) end
+  end
   refresh()
 end
+
+-- getoeteter Mob (Pull-Zaehler mit SuperWoW oder eigene Todesstoesse)
+function SR:OnKill(name)
+  local sw = sr().sw
+  if not sw.running or type(name) ~= "string" then return end
+  sw.ka = (sw.ka or 0) + 1
+  local low = string.lower(name)
+  if self.LASHERS[low] or string.find(low, "lasher", 1, true) then sw.k = (sw.k or 0) + 1 end
+end
+
+-- ohne SuperWoW: Todesstoesse aus dem Kampflog ("You have slain X!")
+local killPattern
+BF:On("CHAT_MSG_COMBAT_HOSTILE_DEATH", function(msg)
+  if type(msg) ~= "string" or (BF.Pulls and BF.Pulls:Available()) then return end
+  if not killPattern then
+    local g = getglobal("SELFKILLOTHER")
+    if type(g) ~= "string" then g = "You have slain %s!" end
+    local p = string.gsub(g, "([%(%)%.%+%-%*%?%[%]%^%$])", "%%%1")
+    killPattern = "^" .. string.gsub(p, "%%s", "(.+)") .. "$"
+  end
+  local _, _, name = string.find(msg, killPattern)
+  if name then SR:OnKill(name) end
+end)
 
 -- frueherer Name (Leiste/Befehle): Start von Hand
 function SR:Start()
@@ -90,7 +122,11 @@ function SR:EndLap(at)
   if not sw.running or not sw.t0 then return nil end
   at = at or time()
   if at < sw.t0 then return nil end
-  local lap = { t = at - sw.t0, at = at, start = sw.t0 }
+  local lap = { t = at - sw.t0, at = at, start = sw.t0, kills = sw.k or 0, all = sw.ka or 0 }
+  if sw.l0 and BF.Session:Running() then
+    lap.loot = BF.Session:Value() - sw.l0
+    if lap.loot < 0 then lap.loot = 0 end
+  end
   sw.running = false
   sw.t0 = nil
   table.insert(d.heat.laps, lap)
@@ -164,9 +200,11 @@ function SR:CompleteHeat()
   local h = d.heat
   local n = getn(h.laps)
   if n == 0 then return end
-  local laps, play = {}, 0
+  local laps, play, kills, loot = {}, 0, {}, {}
   for i = 1, n do
     table.insert(laps, h.laps[i].t)
+    table.insert(kills, h.laps[i].kills or 0)
+    table.insert(loot, h.laps[i].loot or 0)
     play = play + h.laps[i].t
   end
   local done = h.laps[n].at
@@ -178,7 +216,9 @@ function SR:CompleteHeat()
     gold = BF.Session:Value() - h.gold0
     if gold < 0 then gold = 0 end
   end
-  table.insert(d.heats, { at = done, start = start, laps = laps, play = play, total = total, gold = gold })
+  local entry = { at = done, start = start, laps = laps, play = play, total = total, gold = gold,
+    kills = kills, loot = loot, hid = h.hid }
+  table.insert(d.heats, entry)
   while getn(d.heats) > MAX_HEATS do table.remove(d.heats, 1) end
   d.heat = { laps = {} }
   local best = self:BestHeat()
@@ -186,6 +226,40 @@ function SR:CompleteHeat()
   BF:Print(string.format(BF.T("MSG_SR_HEAT"), n, BF.Duration(total), BF.Duration(play))
     .. (isBest and ("  |cff40ff40" .. BF.T("SR_NEWBEST") .. "|r") or ""))
   if BF.Champ then BF.Champ:OnHeat() end
+  if BF.Event then BF.Event:OnHeat(entry) end
+end
+
+-- Lap-Daten fuer Tests (Whip Lasher und Beute pro Lap), als Text zum Kopieren
+function SR:ExportText()
+  local laps = sr().laps
+  local out = { "BananaFarm " .. BF.VERSION .. " lap data, " .. (UnitName("player") or "?") .. ", " .. date("%d.%m.%Y %H:%M") }
+  local n, sk, sl, nl, mk, ml = 0, 0, 0, 0, nil, nil
+  for i = 1, getn(laps) do
+    local l = laps[i]
+    if l.kills then
+      n = n + 1
+      sk = sk + l.kills
+      if not mk or l.kills < mk then mk = l.kills end
+      if l.loot then
+        nl = nl + 1
+        sl = sl + l.loot
+        if not ml or l.loot < ml then ml = l.loot end
+      end
+    end
+  end
+  if n > 0 then
+    table.insert(out, string.format("Laps: %d   Whip Lasher avg %.1f, min %d   Loot avg %.1fg, min %.1fg", n, sk / n, mk,
+      nl > 0 and sl / nl / 10000 or 0, (ml or 0) / 10000))
+  end
+  table.insert(out, "date;time_s;whip_lasher;kills_all;loot_g")
+  for i = 1, getn(laps) do
+    local l = laps[i]
+    if l.kills then
+      table.insert(out, date("%d.%m. %H:%M", l.at) .. ";" .. l.t .. ";" .. l.kills .. ";" .. (l.all or 0) .. ";"
+        .. (l.loot and string.format("%.2f", l.loot / 10000) or "-"))
+    end
+  end
+  return table.concat(out, "\n"), n
 end
 
 -- nach dem Laden: nichts anzuhalten, die Lap laeuft nach Uhrzeit weiter

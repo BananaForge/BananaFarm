@@ -9,9 +9,10 @@
 BananaFarm = {}
 local BF = BananaFarm
 
-BF.VERSION = "0.6.0"
+BF.VERSION = "0.7.0"
 BF.ICON = "Interface\\AddOns\\BananaFarm\\Icon"
 BF.CHAMP_ICON = "Interface\\AddOns\\BananaFarm\\Champions"
+BF.EVENT_BANNER = "Interface\\AddOns\\BananaFarm\\Event"
 
 local getn = table.getn
 local floor = math.floor
@@ -241,10 +242,10 @@ end
 -- Module: einzeln ein- und ausschaltbar. Ein ausgeschaltetes Modul bleibt stumm
 -- (keine Fenster, keine Abfragen, keine Hooks mit Wirkung). vendor und mail brauchen items.
 -- ------------------------------------------------------------
-BF.MODULES = { "tracking", "items", "vendor", "mail", "resets", "pulls", "speedrun", "wish", "sync", "champ" }
+BF.MODULES = { "tracking", "items", "vendor", "mail", "resets", "pulls", "speedrun", "wish", "sync", "champ", "event" }
 -- Module, die ausgeschaltet starten (alle anderen sind beim ersten Start an)
-BF.MODULE_OFF = { champ = true }
-BF.MODULE_NEEDS = { vendor = "items", mail = "items", champ = "speedrun" }
+BF.MODULE_OFF = { champ = true, event = true }
+BF.MODULE_NEEDS = { vendor = "items", mail = "items", champ = "speedrun", event = "speedrun" }
 
 function BF:Enabled(name)
   local m = BananaFarmDB and BananaFarmDB.modules
@@ -261,6 +262,8 @@ function BF:SetModule(name, on)
   m[name] = on and true or false
   local need = BF.MODULE_NEEDS[name]
   if on and need then m[need] = true end
+  -- Event-Modul: Kanal betreten oder verlassen
+  if name == "event" and BF.Event then BF.Event:OnModule(on) end
 end
 
 -- ------------------------------------------------------------
@@ -477,10 +480,18 @@ SlashCmdList["BANANAFARM"] = function(msg)
     BF.Wish:Command(rest)
   elseif cmd == "prices" then
     BF.Vendor:Command(rest)
+  elseif cmd == "lapstats" then
+    local text, n = BF.Speedrun:ExportText()
+    BF.UI:ShowText(BF.T("SR_EXPORT_TITLE"), text)
+    BF:Print(string.format(BF.T("MSG_SR_EXPORT"), n))
+  elseif cmd == "event" then
+    BF.UI.frame:Show()
+    BF.UI.sr.view = "event"
+    BF.UI:ShowPage("speedrun")
   elseif cmd == "donate" then
     BF.UI:ShowDonate()
   else
-    for i = 1, 14 do BF:Print(BF.T("HELP_" .. i)) end
+    for i = 1, 15 do BF:Print(BF.T("HELP_" .. i)) end
   end
 end
 

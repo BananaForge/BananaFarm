@@ -40,7 +40,10 @@ Kein `#`, kein `%`-Operator (stattdessen `BF.mod`), kein `string.match/gmatch`, 
 | Pulls.lua | Pull-Zähler über SuperWoW-GUIDs, Hunter-Modus, nur Mobs an mir/Pet und nur im Kampf |
 | Wish.lua | Wunschliste: Droprate, Mobs, Kills, Chance, Shift-Klick-Aufnahme (neu, 0.4.0) |
 | Speedrun.lua | Rundenstoppuhr, Runden, Durchgänge (5 Runden), Autostart in Düsterbruch, Posten in den Chat |
-| Champ.lua | Lasher Championships: Gilden-Bestenlisten, Wochensieger (neu, 0.5.0, Modul champ, Standard aus) |
+| Champ.lua | Gilden Tournament (früher "Lasher Championships"): Gilden-Bestenlisten, Wochensieger (Modul champ, Standard aus) |
+| Event.lua | Lasher Championships: globales Event über den Kanal BananaFarmLC, Zeugen-Prinzip, Event-Ansicht, Erstellen-Fenster (neu, 0.7.0, Modul event, Standard aus) |
+| Event.tga | Event-Banner (512x256, 2:1) für Event-Ansicht und Sieger-Pop-up |
+| Media/Event.jpg | Event-Banner fürs README |
 | Champions.tga | Podest-Icon für die Championships (128x128, 32 Bit, Rand transparent) |
 | Sync.lua | Kopplung Farmmain/Twink, Abgleich Listen, AH-Preise, Resets mit dem Partner, Abgleich rund um den AH-Scan |
 | Probe.lua | `/bf probe`: prüft SuperWoW/Nampower/Bindings |
@@ -58,6 +61,16 @@ SavedVariables: `BananaFarmDB` (Felder in `Core.lua`, `BF:InitDB`).
 - **Probe (erste Ausführung):** `InteractUnit` ist nil. Vorhanden: `LootSlot`, `GetNumLootItems`, `CloseLoot`, `SetAutoloot`, `GetItemStats`, `UnitPosition`, `SpellInfo`, `GetUnitData`, `GetUnitField`, `GetSpellRec`, `CombatLogAdd`, `TrackUnit`, `UntrackUnit`, `ImportFile`, `ExportFile`. Der Rest der Ausgabe (Stichwortlisten) wurde noch nicht ausgewertet.
 - **Relog-Bug Gold/h (behoben in 0.1.1, ungetestet):** Beim Laden waren Taschen und Gold noch leer. Der Snapshot war leer, die ganze Tasche zählte danach als Beute, und `t0` wurde ohne Sicherung der bisherigen Laufzeit überschrieben. Jetzt: Snapshot erst 3 s nach `PLAYER_ENTERING_WORLD`, Laufzeit wird bei `PLAYER_LOGOUT` gesichert.
 - **Roter Lua-Fehler im Chat** (`api.lua:458: GameTooltip doesn't have a "OnTooltipSetItem"`): Quelle unbekannt, vermutlich ein anderes Addon (nicht TurtleMail). Vollständigen Pfad aus der Fehlermeldung nachreichen.
+
+## Stand 0.7.0 (ungetestet im Spiel, nur simuliert)
+
+- **Regelprüfung (eure Datei vom 20.11.):** Ein leistungsbasiertes Turnier ist nach den OctoWoW-Regeln nicht eindeutig verboten. Startgeld plus Preispool ist aber nicht ausdrücklich geregelt und könnte als Glücksspiel/Casino-Service gelten (dann nur in Ratchet, Booty Bay, Everlook, Gadgetzan). Deshalb: 0.7.0 ohne Gold. Startgeld und Preise (0.8.0) erst nach schriftlicher GM-Freigabe. Die Datei empfiehlt außerdem: Regeln für Gleichstand, Disconnect, Abbruch vorab veröffentlichen, Bots/Automatisierung/Exploits/Multiboxing ausschließen, Zahlungen und Auszahlung dokumentieren, keine nachträglichen Änderungen am Preispool.
+- **Umbenennung:** Gildenwertung heißt jetzt "Gilden Tournament <Jahr>" (`CHAMP_TITLE`, Reiter, Einstellungen). "Lasher Championships <Jahr>" ist das globale Event.
+- **Event (Event.lua, Modul `event`, braucht speedrun, Standard aus):** Kanal `BananaFarmLC` (`JoinChannelByName`, aus dem Chatfenster entfernt, Zeilen über einen Hook auf `ChatFrame_OnEvent` ausgeblendet). Nachrichten im Kanal-Text mit Präfix `BFE~`, eine je 1,2 s. Organisatoren fest: Bareg, Lumihunt (`EV.ORGANIZERS`); Event-ID beginnt mit dem Organisatornamen; Events anderer Absender werden ignoriert, weitergegebene (`RE`) bleiben "unbestätigt", bis der Organisator selbst sendet. Event-Felder: Start, Ende, Wertung (best/count/gold), max. Teilnehmer, Anmeldung bis Start/Ende, Mindest-Lap (s), Mindest-Whip-Lasher, Mindest-Beute (Kupfer), ohne fremde Zeugen zählt. Erstellen-Fenster mit Datum TT.MM.JJJJ und Uhrzeit HH:MM (`EV.MakeTime`, ohne `time(table)`). Anmeldung mit Kämpfername (frei oder Würfel), Klasse und Gilde automatisch.
+- **Zeugen:** `S` bei Lap 1 (aus `SR:StartLap`, `EV:OnHeatStart`), `F` am Ende des Durchgangs (`SR:CompleteHeat`, `EV:OnHeat`) mit Gesamtzeit, Laps, Whip Lasher und Beute je Lap. Jeder Client notiert Empfangszeiten (`h.wit[zeuge] = { s, e }`), der eigene als Selbst-Zeuge. Weitergabe: Neuer Client sendet `Q`, ein zufälliger anderer antwortet (`G` hält die übrigen zurück) mit `RE`, `RJ`, `RH` (Durchgang mit bis zu 4 Zeugen). Prüfung (`EV:Check`): vollständig (Reset-Limit Laps), jede Lap >= Mindestzeit, Whip Lasher und Beute je Lap >= Mindestwert (wenn > 0), mit fremden Zeugen: eigene Zeit nicht mehr als 120 s kürzer als der Median der Zeugen-Spanne (sonst "auffällig"); ohne fremde Zeugen nur mit Option. Durchgang muss im Zeitraum liegen. Rangliste nach gewählter Wertung. Ende: Sieger-Pop-up mit Banner (`UI:ShowEventWinners`), einmal je Event.
+- **Lap-Daten (Speedrun.lua):** Jede Lap speichert `kills` (Whip Lasher bzw. Namen mit "lasher"), `all` (alle Kills) und `loot` (Session-Wert-Differenz). Kills aus `Pulls:Killed` (SuperWoW, Pull-Zählung läuft jetzt auch mit Modul speedrun) oder ohne SuperWoW aus "You have slain X!". Durchgänge speichern `kills`, `loot`, `hid`. `/bf lapstats` und Knopf "Lap-Daten" zeigen alles als Text zum Kopieren (für die Mindestwerte, auch für Freunde).
+- **README auf Englisch**, mit Event-Banner.
+- **Getestet nur simuliert:** 4 Clients im Kanal: Organisator erstellt, Nicht-Organisator und gefälschtes Event abgewiesen, zwei Anmeldungen, ehrlicher Durchgang gewertet, geschönte Zeit als auffällig verworfen, Spätankömmling bekommt alles per Weitergabe, Sieger-Pop-up. Unbestätigt im Spiel: Kanalbeitritt und Ausblenden, Crossfaction im Kanal, Zeichen "~" im Kanaltext, Drosselung durch den Server.
 
 ## Stand 0.6.0 (ungetestet im Spiel, nur simuliert)
 

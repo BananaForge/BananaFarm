@@ -873,6 +873,8 @@ function UI:BuildSettings(p)
   section("SEC_CHAMP", "champ", "MOD_CHAMP")
   checkRow("CHK_CHAMPGOLD", "champGold", function() BF.Champ:Send() end)
   infoRow("INFO_CHAMP")
+  section("SEC_EVENT", "event", "MOD_EVENT")
+  infoRow("INFO_EVENT")
   section("SEC_WISH", "wish", "MOD_WISH")
   infoRow("INFO_WISH")
 
@@ -1575,8 +1577,17 @@ function UI:BuildSpeedrun(p)
 
   sr.tabMine = self:Button(p, 120, 22, "SR_TAB_MINE", function() sr.view = "mine"; UI:RefreshSpeedrun() end, "flat")
   sr.tabMine:SetPoint("TOPLEFT", p, "TOPLEFT", 14, -6)
-  sr.tabGuild = self:Button(p, 170, 22, "SR_TAB_GUILD", function() sr.view = "guild"; UI:RefreshSpeedrun() end, "flat")
+  sr.tabGuild = self:Button(p, 150, 22, "SR_TAB_GUILD", function() sr.view = "guild"; UI:RefreshSpeedrun() end, "flat")
   sr.tabGuild:SetPoint("LEFT", sr.tabMine, "RIGHT", 4, 0)
+  sr.tabEvent = self:Button(p, 170, 22, "SR_TAB_EVENT", function() sr.view = "event"; UI:RefreshSpeedrun() end, "flat")
+  sr.tabEvent:SetPoint("LEFT", sr.tabGuild, "RIGHT", 4, 0)
+
+  -- ---------------- Lasher Championships (globales Event, Event.lua) ----------------
+  local evp = CreateFrame("Frame", nil, p)
+  evp:SetPoint("TOPLEFT", p, "TOPLEFT", 0, 0)
+  evp:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT", 0, 0)
+  sr.event = evp
+  self:BuildEventPage(evp)
 
   -- ---------------- Meine Zeiten ----------------
   local m = CreateFrame("Frame", nil, p)
@@ -1645,7 +1656,7 @@ function UI:BuildSpeedrun(p)
     end)
     sr.rows[i] = r
   end
-  sr.detail = self:Font(m, 10, C.text)
+  sr.detail = self:Font(m, 9, C.text)
   sr.detail:SetPoint("TOPLEFT", m, "TOPLEFT", 16, -358)
   sr.detail:SetWidth(448)
   sr.empty = self:Font(m, 11, C.muted)
@@ -1666,6 +1677,14 @@ function UI:BuildSpeedrun(p)
   local ph = self:Button(m, 110, 22, "SR_POST_HEAT", function() BF.Speedrun:Post("heat") end)
   ph:SetPoint("LEFT", pb, "RIGHT", 6, 0)
 
+  -- Lap-Daten (Whip Lasher und Beute pro Lap) zum Kopieren, fuer die Mindestwerte im Event
+  local exp = self:Button(m, 110, 20, "SR_EXPORT", function()
+    local text, n = BF.Speedrun:ExportText()
+    UI:ShowText(T("SR_EXPORT_TITLE"), text)
+    BF:Print(string.format(T("MSG_SR_EXPORT"), n))
+  end, "flat")
+  exp:SetPoint("TOPRIGHT", m, "TOPRIGHT", -14, -414)
+  self:Tip(exp, "SR_EXPORT", "SR_EXPORT_TT")
   sr.auto = self:Check(m, "CHK_SRAUTO", "srAutoStart")
   sr.auto:SetPoint("TOPLEFT", m, "TOPLEFT", 16, -416)
   self:Tip(sr.auto, "CHK_SRAUTO", "CHK_SRAUTO_TT")
@@ -1770,12 +1789,14 @@ function UI:RefreshSpeedrun()
   local limit = BF.Resets:Limit()
   sr.tabMine:SetActive(sr.view == "mine")
   sr.tabGuild:SetActive(sr.view == "guild")
-  if sr.view == "mine" then
-    sr.mine:Show()
-    sr.guild:Hide()
+  sr.tabEvent:SetActive(sr.view == "event")
+  if sr.view == "mine" then sr.mine:Show() else sr.mine:Hide() end
+  if sr.view == "guild" then sr.guild:Show() else sr.guild:Hide() end
+  if sr.view == "event" then
+    sr.event:Show()
+    self:RefreshEventPage()
   else
-    sr.mine:Hide()
-    sr.guild:Show()
+    sr.event:Hide()
   end
 
   -- Kacheln
@@ -1843,7 +1864,15 @@ function UI:RefreshSpeedrun()
   local sel = sr.selHeat
   if sel then
     local parts = {}
-    for i = 1, getn(sel.laps) do table.insert(parts, i .. ") " .. BF.Duration(sel.laps[i])) end
+    for i = 1, getn(sel.laps) do
+      local extra = ""
+      if sel.kills then
+        extra = " (" .. (sel.kills[i] or 0) .. " WL"
+        if sel.loot and (sel.loot[i] or 0) > 0 then extra = extra .. ", " .. floor(sel.loot[i] / 10000) .. "g" end
+        extra = extra .. ")"
+      end
+      table.insert(parts, i .. ") " .. BF.Duration(sel.laps[i]) .. extra)
+    end
     sr.detail:SetText(T("SR_LAPS_OF") .. "  " .. table.concat(parts, "   "))
   elseif count > 0 then
     sr.detail:SetText("|cff808590" .. T("SR_CLICK_HEAT") .. "|r")

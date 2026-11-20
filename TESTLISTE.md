@@ -208,3 +208,17 @@ Fehler bitte im Wortlaut notieren (Chatzeilen, Lua-Fehler mit Dateiname und Zeil
 
 ### Reset inst. (Twink)
 - [ ] Klick: Wird die Instanz zurückgesetzt? Welche Chatzeile erscheint ("-> ...")? Falls "keine Antwort": `/bf probe`, Abschnitt "Instanz-Reset" schicken.
+
+## 0.7.0: neu zu testen
+
+### Lap-Daten (für die Mindestwerte)
+- [ ] Ein paar normale Durchgänge farmen (Session läuft). Danach `/bf lapstats` oder Knopf "Lap-Daten" im Speedrun-Reiter: Text kopieren und schicken. Gerne auch von Freunden.
+- [ ] Stimmen die Whip-Lasher-Zahlen ungefähr mit der Wirklichkeit?
+
+### Lasher Championships (Event, ohne Gold)
+- [ ] Einstellungen, "Lasher Championships (Event)" anschalten. Erscheint im Chat nichts vom Kanal BananaFarmLC (wird ausgeblendet)?
+- [ ] Als Bareg oder Lumihunt: Speedrun, Lasher Championships, "Event erstellen" (Datum, Uhrzeit, Regeln). Sehen andere das Event (auch andere Fraktion)?
+- [ ] Teilnehmen mit Kämpfername oder Würfel. Steht man bei allen in der Liste (Klasse in Farbe, Gilde)?
+- [ ] Durchgang fahren: Erscheint die Zeit bei den anderen, Spalte Zeugen mit Zahl?
+- [ ] Ausloggen, später einloggen: Ist der Stand wieder da (Weitergabe)?
+- [ ] Event-Ende: Sieger-Pop-up mit Banner?
