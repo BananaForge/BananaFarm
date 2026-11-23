@@ -9,7 +9,7 @@
 BananaFarm = {}
 local BF = BananaFarm
 
-BF.VERSION = "0.7.0"
+BF.VERSION = "0.7.1"
 BF.ICON = "Interface\\AddOns\\BananaFarm\\Icon"
 BF.CHAMP_ICON = "Interface\\AddOns\\BananaFarm\\Champions"
 BF.EVENT_BANNER = "Interface\\AddOns\\BananaFarm\\Event"
@@ -264,6 +264,8 @@ function BF:SetModule(name, on)
   if on and need then m[need] = true end
   -- Event-Modul: Kanal betreten oder verlassen
   if name == "event" and BF.Event then BF.Event:OnModule(on) end
+  -- Speedrun angeschaltet: Regeln zeigen
+  if name == "speedrun" and on and BF.UI and BF.UI.ShowRules then BF.UI:ShowRules() end
 end
 
 -- ------------------------------------------------------------

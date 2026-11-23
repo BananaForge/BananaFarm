@@ -222,3 +222,11 @@ Fehler bitte im Wortlaut notieren (Chatzeilen, Lua-Fehler mit Dateiname und Zeil
 - [ ] Durchgang fahren: Erscheint die Zeit bei den anderen, Spalte Zeugen mit Zahl?
 - [ ] Ausloggen, später einloggen: Ist der Stand wieder da (Weitergabe)?
 - [ ] Event-Ende: Sieger-Pop-up mit Banner?
+
+## 0.7.1: neu zu testen
+- [ ] Lap mit zu wenigen Whip Lashern (z. B. ein Pack auslassen): kommt nach dem Reset "Lap n zählt nicht: nur x Whip Lasher"?
+- [ ] Zweiter Char mit in der Instanz (Gruppe): Meldung "ist mit in der Instanz", Lap zählt nicht? Twink in der Stadt stört nicht?
+- [ ] Regelfenster: beim Anschalten von Speedrun, beim Event-Beitritt, Knopf "Regeln". Zeigt es SuperWoW und Nampower als OK?
+- [ ] Lap-Daten: Spalte looted_corpses. Wie viele Leichen lootet ihr pro Lap, wenn alles eingesammelt wird? (Dann können wir "Loot komplett" prüfen.)
+- [ ] Dashboard: Kacheln ohne Überlappung, Lap-Felder mit Whip Lasher und Beute, Klick auf einen Durchgang zeigt ihn oben. Screenshot.
+- [ ] Einrichtungsfenster: "Fertig" frei, Anleitung neu.

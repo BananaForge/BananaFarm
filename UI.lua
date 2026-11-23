@@ -1064,7 +1064,7 @@ function UI:ShowPicker(anchor, names, onPick)
 end
 
 function UI:BuildSetup()
-  local f = self:Window("BananaFarmSetup", 440, 512)
+  local f = self:Window("BananaFarmSetup", 440, 556)
   self.setup = f
   if not BananaFarmDB.pos["BananaFarmSetup"] then f:SetPoint("CENTER", UIParent, "CENTER", 0, 20) end
   local icon = f:CreateTexture(nil, "ARTWORK")
@@ -1190,7 +1190,10 @@ function UI:SetupStepDone(save)
   f.active = false
   local v = BF.Trim(f.edit:GetText() or "")
   f:Hide()
-  if f.kind == "howto" then return end
+  if f.kind == "howto" then
+    if BF:Enabled("speedrun") and not BananaFarmDB.srRulesSeen then self:ShowRules() end
+    return
+  end
   -- Sprache per Escape uebersprungen: automatisch (Spielsprache), weiter mit den Modulen
   if f.kind == "lang" then
     f:Hide()
@@ -1552,6 +1555,9 @@ function UI:Tile(parent, w, h, key)
   t.sub = self:Font(t, 9, C.muted)
   t.sub:SetPoint("BOTTOMRIGHT", t, "BOTTOMRIGHT", -6, 7)
   t.sub:SetJustifyH("RIGHT")
+  -- zweite Zeile unter der Ueberschrift (Zusatz, ueberlappt den Wert nicht)
+  t.line2 = self:Font(t, 9, C.muted)
+  t.line2:SetPoint("TOPLEFT", t, "TOPLEFT", 7, -17)
   return t
 end
 
@@ -1597,22 +1603,22 @@ function UI:BuildSpeedrun(p)
 
   local keys = { "SR_T_BESTHEAT", "SR_T_AVGHEAT", "SR_T_BESTLAP", "SR_T_WEEK" }
   for i = 1, 4 do
-    local t = self:Tile(m, 108, 46, keys[i])
+    local t = self:Tile(m, 108, 50, keys[i])
     t:SetPoint("TOPLEFT", m, "TOPLEFT", 14 + (i - 1) * 113, -36)
     sr.tiles[i] = t
   end
 
   local h1 = self:Font(m, 12, C.gold)
-  h1:SetPoint("TOPLEFT", m, "TOPLEFT", 16, -92)
+  h1:SetPoint("TOPLEFT", m, "TOPLEFT", 16, -94)
   sr.curTitle = h1
   -- laufenden (unvollstaendigen) Durchgang wegwerfen
   sr.discard = self:Button(m, 110, 18, "BTN_DISCARD", function()
     UI:Confirm("discard", T("ASK_DISCARD"), function() BF.Speedrun:DiscardHeat() end)
   end, "danger")
-  sr.discard:SetPoint("TOPRIGHT", m, "TOPRIGHT", -14, -88)
+  sr.discard:SetPoint("TOPRIGHT", m, "TOPRIGHT", -14, -90)
   for i = 1, 5 do
-    local bx = self:Tile(m, 84, 42, nil)
-    bx:SetPoint("TOPLEFT", m, "TOPLEFT", 14 + (i - 1) * 89, -108)
+    local bx = self:Tile(m, 84, 50, nil)
+    bx:SetPoint("TOPLEFT", m, "TOPLEFT", 14 + (i - 1) * 89, -110)
     bx.label:SetText(string.format(T("SR_LAPN"), i))
     sr.boxes[i] = bx
   end
@@ -1620,7 +1626,7 @@ function UI:BuildSpeedrun(p)
   local h2 = self:Font(m, 12, C.gold)
   h2:SetPoint("TOPLEFT", m, "TOPLEFT", 16, -162)
   self:Loc(h2, "SR_RECENT")
-  local cols = { { "SR_C_DATE", 34 }, { "SR_C_TOTAL", 140 }, { "SR_C_PLAY", 210 }, { "SR_C_VSBEST", 280 }, { "SR_C_GOLD", 350 } }
+  local cols = { { "SR_C_DATE", 34 }, { "SR_C_TOTAL", 140 }, { "SR_C_AVGLAP", 210 }, { "SR_C_VSBEST", 280 }, { "SR_C_GOLD", 350 } }
   for i = 1, getn(cols) do
     local fs = self:Font(m, 10, C.muted)
     fs:SetPoint("TOPLEFT", m, "TOPLEFT", cols[i][2], -180)
@@ -1656,8 +1662,8 @@ function UI:BuildSpeedrun(p)
     end)
     sr.rows[i] = r
   end
-  sr.detail = self:Font(m, 9, C.text)
-  sr.detail:SetPoint("TOPLEFT", m, "TOPLEFT", 16, -358)
+  sr.detail = self:Font(m, 9, C.muted)
+  sr.detail:SetPoint("TOPLEFT", m, "TOPLEFT", 16, -360)
   sr.detail:SetWidth(448)
   sr.empty = self:Font(m, 11, C.muted)
   sr.empty:SetPoint("TOPLEFT", m, "TOPLEFT", 30, -220)
@@ -1683,13 +1689,16 @@ function UI:BuildSpeedrun(p)
     UI:ShowText(T("SR_EXPORT_TITLE"), text)
     BF:Print(string.format(T("MSG_SR_EXPORT"), n))
   end, "flat")
-  exp:SetPoint("TOPRIGHT", m, "TOPRIGHT", -14, -414)
+  exp:SetPoint("TOPLEFT", m, "TOPLEFT", 14, -440)
   self:Tip(exp, "SR_EXPORT", "SR_EXPORT_TT")
+  local rules = self:Button(m, 110, 20, "SR_RULES", function() UI:ShowRules() end, "flat")
+  rules:SetPoint("LEFT", exp, "RIGHT", 6, 0)
+  self:Tip(rules, "SR_RULES", "SR_RULES_TT")
   sr.auto = self:Check(m, "CHK_SRAUTO", "srAutoStart")
   sr.auto:SetPoint("TOPLEFT", m, "TOPLEFT", 16, -416)
   self:Tip(sr.auto, "CHK_SRAUTO", "CHK_SRAUTO_TT")
   sr.hint = self:Font(m, 10, C.muted)
-  sr.hint:SetPoint("TOPLEFT", m, "TOPLEFT", 16, -442)
+  sr.hint:SetPoint("TOPLEFT", m, "TOPLEFT", 16, -466)
   sr.hint:SetWidth(448)
   sr.hint:SetJustifyH("LEFT")
 
@@ -1805,38 +1814,70 @@ function UI:RefreshSpeedrun()
   local wn = SR:PeriodStats(SR.WeekStart())
   local avg = SR:HeatAvg()
   sr.tiles[1].value:SetText(best and BF.Duration(best.total) or "-")
-  sr.tiles[1].sub:SetText(best and date("%d.%m.", best.at) or "")
+  sr.tiles[1].line2:SetText(best and date("%d.%m. %H:%M", best.at) or "")
   sr.tiles[2].value:SetText(avg and BF.Duration(avg) or "-")
-  sr.tiles[2].sub:SetText(string.format(T("SR_N_HEATS"), getn(d.heats or {})))
+  sr.tiles[2].line2:SetText(string.format(T("SR_N_HEATS"), getn(d.heats or {})))
   sr.tiles[3].value:SetText(bestLap and BF.Duration(bestLap) or "-")
-  sr.tiles[3].sub:SetText(n > 0 and string.format(T("SR_N_LAPS"), n) or "")
+  sr.tiles[3].line2:SetText(n > 0 and string.format(T("SR_N_LAPS"), n) or "")
   sr.tiles[4].value:SetText(tostring(wn))
-  sr.tiles[4].sub:SetText(T("SR_HEATS_SHORT"))
+  sr.tiles[4].line2:SetText(T("SR_HEATS_SHORT"))
 
   -- laufender Durchgang: fertige Runden, die laufende Runde in Gold
   local heat = d.heat or { laps = {} }
   local hl = heat.laps or {}
-  sr.curTitle:SetText(string.format(T("SR_CURRENT"), getn(hl), limit))
-  if getn(hl) > 0 or SR:Running() then sr.discard:Show() else sr.discard:Hide() end
+  local sel = sr.selHeat
+  local function wlText(k, loot, bad)
+    local s = (k or 0) .. " WL"
+    if loot then s = s .. ", " .. floor(loot / 10000) .. "g" end
+    if bad then s = "|cffff6050" .. s .. "|r" end
+    return s
+  end
+  if sel then
+    -- gewaehlter Durchgang aus der Liste (zweiter Klick geht zurueck)
+    sr.curTitle:SetText(string.format(T("SR_SELECTED"), date("%d.%m. %H:%M", sel.at), BF.Duration(sel.total)))
+    sr.discard:Hide()
+  else
+    sr.curTitle:SetText(string.format(T("SR_CURRENT"), getn(hl), limit))
+    if getn(hl) > 0 or SR:Running() then sr.discard:Show() else sr.discard:Hide() end
+  end
   for i = 1, 5 do
     local bx = sr.boxes[i]
     if i > limit then
       bx:Hide()
     else
       bx:Show()
-      local lap = hl[i]
-      if lap then
-        bx.value:SetText(BF.Duration(lap.t))
-        bx.value:SetTextColor(1, 1, 1)
-        bx.sub:SetText(deltaText(lap.t, bestLap))
-      elseif i == getn(hl) + 1 and (SR:Running() or SR:Elapsed() > 0) then
-        bx.value:SetText(BF.Duration(SR:Elapsed()))
-        bx.value:SetTextColor(C.gold[1], C.gold[2], C.gold[3])
-        bx.sub:SetText(SR:Running() and T("SR_RUNNING") or "")
+      bx.line2:SetText("")
+      if sel then
+        local t = sel.laps[i]
+        if t then
+          bx.value:SetText(BF.Duration(t))
+          bx.value:SetTextColor(1, 1, 1)
+          bx.sub:SetText(deltaText(t, bestLap))
+          if sel.kills then bx.line2:SetText(wlText(sel.kills[i], sel.loot and sel.loot[i])) end
+        else
+          bx.value:SetText("-")
+          bx.value:SetTextColor(C.muted[1], C.muted[2], C.muted[3])
+          bx.sub:SetText("")
+        end
       else
-        bx.value:SetText("-")
-        bx.value:SetTextColor(C.muted[1], C.muted[2], C.muted[3])
-        bx.sub:SetText("")
+        local lap = hl[i]
+        if lap then
+          bx.value:SetText(BF.Duration(lap.t))
+          bx.value:SetTextColor(1, 1, 1)
+          bx.sub:SetText(deltaText(lap.t, bestLap))
+          bx.line2:SetText(wlText(lap.kills, lap.loot, lap.bad))
+        elseif i == getn(hl) + 1 and SR:Running() then
+          bx.value:SetText(BF.Duration(SR:Elapsed()))
+          bx.value:SetTextColor(C.gold[1], C.gold[2], C.gold[3])
+          bx.sub:SetText(T("SR_RUNNING"))
+          local sw = d.sw or {}
+          local loot = sw.l0 and BF.Session:Running() and (BF.Session:Value() - sw.l0) or nil
+          bx.line2:SetText(wlText(sw.k, loot))
+        else
+          bx.value:SetText("-")
+          bx.value:SetTextColor(C.muted[1], C.muted[2], C.muted[3])
+          bx.sub:SetText("")
+        end
       end
     end
   end
@@ -1851,8 +1892,8 @@ function UI:RefreshSpeedrun()
     if e then
       r.cells[1]:SetText(date("%d.%m. %H:%M", e.at))
       r.cells[2]:SetText(BF.Duration(e.total))
-      r.cells[3]:SetText(BF.Duration(e.play))
-      r.cells[4]:SetText(deltaText(e.total, best and best.total))
+      r.cells[3]:SetText(BF.Duration(floor(e.total / math.max(1, getn(e.laps or {})))))
+      r.cells[4]:SetText(e.bad and ("|cffff6050" .. T("SR_INVALID") .. "|r") or deltaText(e.total, best and best.total))
       r.cells[5]:SetText(goldText(e.gold))
       if sr.selHeat == e then r.sel:Show() else r.sel:Hide() end
       r:Show()
@@ -1861,19 +1902,8 @@ function UI:RefreshSpeedrun()
     end
   end
   if count == 0 then sr.empty:Show() else sr.empty:Hide() end
-  local sel = sr.selHeat
   if sel then
-    local parts = {}
-    for i = 1, getn(sel.laps) do
-      local extra = ""
-      if sel.kills then
-        extra = " (" .. (sel.kills[i] or 0) .. " WL"
-        if sel.loot and (sel.loot[i] or 0) > 0 then extra = extra .. ", " .. floor(sel.loot[i] / 10000) .. "g" end
-        extra = extra .. ")"
-      end
-      table.insert(parts, i .. ") " .. BF.Duration(sel.laps[i]) .. extra)
-    end
-    sr.detail:SetText(T("SR_LAPS_OF") .. "  " .. table.concat(parts, "   "))
+    sr.detail:SetText(T("SR_CLICK_BACK"))
   elseif count > 0 then
     sr.detail:SetText("|cff808590" .. T("SR_CLICK_HEAT") .. "|r")
   else
@@ -2327,6 +2357,58 @@ end
 function UI:HideConfirm(key)
   local f = self.confirm
   if f and f.key == key then f:Hide() end
+end
+
+-- ------------------------------------------------------------
+-- Speedrun-Regeln: beim Anschalten des Moduls, beim Event-Beitritt und per Knopf "Regeln".
+-- onAccept: wird nach "Verstanden" ausgefuehrt (z. B. die Anmeldung zum Event).
+-- ------------------------------------------------------------
+function UI:ShowRules(onAccept)
+  local f = self.rules
+  if not f then
+    f = self:Window("BananaFarmRules", 460, 520)
+    self.rules = f
+    if not BananaFarmDB.pos["BananaFarmRules"] then f:SetPoint("CENTER", UIParent, "CENTER", 0, 30) end
+    tinsert(UISpecialFrames, "BananaFarmRules")
+    local icon = f:CreateTexture(nil, "ARTWORK")
+    icon:SetTexture(BF.CHAMP_ICON)
+    icon:SetWidth(40)
+    icon:SetHeight(40)
+    icon:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -10)
+    local title = self:Font(f, 16, C.gold, FONT_TITLE)
+    title:SetPoint("TOPLEFT", f, "TOPLEFT", 62, -20)
+    self:Loc(title, "SR_RULES_TITLE")
+    f.text = self:Font(f, 10, C.text)
+    f.text:SetPoint("TOPLEFT", f, "TOPLEFT", 18, -58)
+    f.text:SetWidth(424)
+    f.text:SetJustifyH("LEFT")
+    f.text:SetJustifyV("TOP")
+    f.mods = self:Font(f, 10, C.text)
+    f.mods:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 18, 50)
+    f.mods:SetWidth(424)
+    f.ok = self:Button(f, 180, 24, "BTN_UNDERSTOOD", function()
+      local fn = f.onAccept
+      f.onAccept = nil
+      BananaFarmDB.srRulesSeen = true
+      f:Hide()
+      if fn then fn() end
+    end, "ok")
+    f.ok:SetPoint("BOTTOMRIGHT", f, "BOTTOM", -4, 14)
+    f.no = self:Button(f, 120, 24, "BTN_CANCEL", function()
+      f.onAccept = nil
+      f:Hide()
+    end, "flat")
+    f.no:SetPoint("BOTTOMLEFT", f, "BOTTOM", 4, 14)
+  end
+  f.onAccept = onAccept
+  f.text:SetText(T("SR_RULES_TEXT"))
+  local sw = SUPERWOW_VERSION ~= nil
+  local np = GetNampowerVersion ~= nil
+  local function mark(ok) return ok and "|cff40ff40OK|r" or "|cffff6050" .. T("SR_MISSING") .. "|r" end
+  f.mods:SetText(string.format(T("SR_RULES_MODS"), mark(sw), mark(np)))
+  f.ok.fs:SetText(T(onAccept and "BTN_UNDERSTOOD_JOIN" or "BTN_UNDERSTOOD"))
+  if onAccept then f.no:Show() else f.no:Hide() end
+  f:Show()
 end
 
 -- ------------------------------------------------------------

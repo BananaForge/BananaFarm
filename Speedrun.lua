@@ -23,6 +23,8 @@ local SR = BF.Speedrun
 SR.CHANNELS = { "PARTY", "RAID", "GUILD", "SAY" }
 local MAX_LAPS = 200
 local MAX_HEATS = 200
+-- Mindestwerte einer gueltigen Lap ohne Event (im Event gelten dessen Werte)
+SR.RULES = { minLap = 120, minKills = 78, minLoot = 20000 }
 -- Lasher, die pro Lap gezaehlt werden (Kleinbuchstaben; zusaetzlich zaehlt alles mit "lasher" im Namen)
 SR.LASHERS = { ["whip lasher"] = true }
 -- Zonenname von Duesterbruch in den Client-Sprachen (fuer den Autostart)
@@ -78,7 +80,8 @@ function SR:StartLap(at)
   sw.running = true
   sw.t0 = at
   -- Zaehler der Lap: Whip Lasher, alle Kills, Beutewert (Session-Wert zu Beginn)
-  sw.k, sw.ka = 0, 0
+  sw.k, sw.ka, sw.lc = 0, 0, 0
+  sw.helper = nil
   sw.l0 = BF.Session:Running() and BF.Session:Value() or nil
   if getn(d.heat.laps) == 0 then
     d.heat.hid = tostring(at)
@@ -122,7 +125,8 @@ function SR:EndLap(at)
   if not sw.running or not sw.t0 then return nil end
   at = at or time()
   if at < sw.t0 then return nil end
-  local lap = { t = at - sw.t0, at = at, start = sw.t0, kills = sw.k or 0, all = sw.ka or 0 }
+  local lap = { t = at - sw.t0, at = at, start = sw.t0, kills = sw.k or 0, all = sw.ka or 0,
+    looted = sw.lc or 0, solo = not sw.helper }
   if sw.l0 and BF.Session:Running() then
     lap.loot = BF.Session:Value() - sw.l0
     if lap.loot < 0 then lap.loot = 0 end
@@ -133,8 +137,80 @@ function SR:EndLap(at)
   table.insert(d.laps, lap)
   while getn(d.laps) > MAX_LAPS do table.remove(d.laps, 1) end
   BF:Print(string.format(BF.T("MSG_SR_LAP2"), getn(d.heat.laps), BF.Duration(lap.t)))
+  -- sofort pruefen und melden, wenn die Lap nicht zaehlt
+  local bad = self:LapProblems(lap)
+  if getn(bad) > 0 then
+    lap.bad = true
+    local msg = string.format(BF.T("MSG_SR_LAPBAD"), getn(d.heat.laps), table.concat(bad, ", "))
+    BF:Error(msg)
+    if UIErrorsFrame then UIErrorsFrame:AddMessage(msg, 1, 0.3, 0.2) end
+  end
   return lap
 end
+
+-- Mindestwerte: im laufenden Event, bei dem man angemeldet ist, dessen Werte, sonst SR.RULES
+function SR:Rules()
+  local E = BF.Event
+  local ev = E and E:Enabled() and E:Current()
+  if ev and E:Joined() and E:State(ev) == "running" then
+    return { minLap = ev.minLap, minKills = ev.minKills, minLoot = ev.minLoot }
+  end
+  return self.RULES
+end
+
+-- Gruende, warum eine Lap nicht zaehlt (leere Liste = zaehlt)
+function SR:LapProblems(lap)
+  local r = self:Rules()
+  local out = {}
+  if lap.t < (r.minLap or 0) then
+    table.insert(out, string.format(BF.T("LAPBAD_TIME"), BF.Duration(lap.t), BF.Duration(r.minLap)))
+  end
+  if (r.minKills or 0) > 0 and (lap.kills or 0) < r.minKills then
+    table.insert(out, string.format(BF.T("LAPBAD_KILLS"), lap.kills or 0, r.minKills))
+  end
+  if (r.minLoot or 0) > 0 and lap.loot and lap.loot < r.minLoot then
+    table.insert(out, string.format(BF.T("LAPBAD_LOOT"), BF.Money(lap.loot), BF.Money(r.minLoot)))
+  end
+  if lap.solo == false then table.insert(out, BF.T("LAPBAD_HELPER")) end
+  return out
+end
+
+-- gelootete Leichen der Lap (fuer die Frage "Loot komplett eingesammelt")
+BF:On("LOOT_OPENED", function()
+  local sw = sr().sw
+  if sw.running then sw.lc = (sw.lc or 0) + 1 end
+end)
+
+-- allein in der Instanz? Alle 5 s waehrend der Lap die Gruppe pruefen. In eine Instanz kommen nur
+-- Gruppenmitglieder. Schlachtzug: Gebiet jedes Mitglieds; Gruppe: Mitglied in Sichtweite (ca. 100 m).
+function SR:CheckSolo()
+  local sw = sr().sw
+  if not sw.running or sw.helper or not IsInInstance or not IsInInstance() then return end
+  local me = UnitName("player")
+  local zone = (GetRealZoneText and GetRealZoneText()) or ""
+  local n = GetNumRaidMembers()
+  if n > 0 then
+    for i = 1, n do
+      local name, _, _, _, _, _, z, online = GetRaidRosterInfo(i)
+      if name and name ~= me and online and z == zone then sw.helper = name end
+    end
+  else
+    for i = 1, GetNumPartyMembers() do
+      local u = "party" .. i
+      if UnitIsVisible and UnitIsVisible(u) then sw.helper = UnitName(u) end
+    end
+  end
+  if sw.helper then BF:Error(string.format(BF.T("MSG_SR_HELPER"), sw.helper)) end
+end
+
+local soloTick = CreateFrame("Frame")
+soloTick.t = 0
+soloTick:SetScript("OnUpdate", function()
+  this.t = this.t + (arg1 or 0)
+  if this.t < 5 then return end
+  this.t = 0
+  if BF.ready and BF:Enabled("speedrun") then SR:CheckSolo() end
+end)
 
 -- Instanz-Reset zur Uhrzeit ts (eigener Reset, Partner online oder per Sync nach dem Einloggen)
 function SR:OnResetAt(ts)
@@ -200,11 +276,15 @@ function SR:CompleteHeat()
   local h = d.heat
   local n = getn(h.laps)
   if n == 0 then return end
-  local laps, play, kills, loot = {}, 0, {}, {}
+  local laps, play, kills, loot, solo, looted = {}, 0, {}, {}, {}, {}
+  local anyBad = false
   for i = 1, n do
+    if h.laps[i].bad then anyBad = true end
     table.insert(laps, h.laps[i].t)
     table.insert(kills, h.laps[i].kills or 0)
     table.insert(loot, h.laps[i].loot or 0)
+    table.insert(solo, h.laps[i].solo == false and 0 or 1)
+    table.insert(looted, h.laps[i].looted or 0)
     play = play + h.laps[i].t
   end
   local done = h.laps[n].at
@@ -217,7 +297,7 @@ function SR:CompleteHeat()
     if gold < 0 then gold = 0 end
   end
   local entry = { at = done, start = start, laps = laps, play = play, total = total, gold = gold,
-    kills = kills, loot = loot, hid = h.hid }
+    kills = kills, loot = loot, solo = solo, looted = looted, hid = h.hid, bad = anyBad or nil }
   table.insert(d.heats, entry)
   while getn(d.heats) > MAX_HEATS do table.remove(d.heats, 1) end
   d.heat = { laps = {} }
@@ -251,12 +331,13 @@ function SR:ExportText()
     table.insert(out, string.format("Laps: %d   Whip Lasher avg %.1f, min %d   Loot avg %.1fg, min %.1fg", n, sk / n, mk,
       nl > 0 and sl / nl / 10000 or 0, (ml or 0) / 10000))
   end
-  table.insert(out, "date;time_s;whip_lasher;kills_all;loot_g")
+  table.insert(out, "date;time_s;whip_lasher;kills_all;loot_g;looted_corpses;solo")
   for i = 1, getn(laps) do
     local l = laps[i]
     if l.kills then
       table.insert(out, date("%d.%m. %H:%M", l.at) .. ";" .. l.t .. ";" .. l.kills .. ";" .. (l.all or 0) .. ";"
-        .. (l.loot and string.format("%.2f", l.loot / 10000) or "-"))
+        .. (l.loot and string.format("%.2f", l.loot / 10000) or "-") .. ";" .. (l.looted or "-") .. ";"
+        .. (l.solo == false and "no" or "yes"))
     end
   end
   return table.concat(out, "\n"), n
@@ -291,23 +372,27 @@ function SR:ArchiveSession() end
 -- ------------------------------------------------------------
 -- Anzahl, Beste, Schnitt, Letzte der gespeicherten Runden (Leiste)
 function SR:LapStats()
+  -- nur gueltige Laps (ungueltige: zu kurz, zu wenige Whip Lasher, zu wenig Beute, nicht allein)
   local laps = BananaFarmDB.speedrun.laps
-  local n = getn(laps)
-  if n == 0 then return 0 end
-  local best, sum = nil, 0
-  for i = 1, n do
-    local t = laps[i].t
-    sum = sum + t
-    if not best or t < best then best = t end
+  local n, best, sum, last = 0, nil, 0, nil
+  for i = 1, getn(laps) do
+    if not laps[i].bad then
+      local t = laps[i].t
+      n = n + 1
+      sum = sum + t
+      last = t
+      if not best or t < best then best = t end
+    end
   end
-  return n, best, sum / n, laps[n].t
+  if n == 0 then return 0 end
+  return n, best, sum / n, last
 end
 
 function SR:BestHeat()
   local best
   local hs = sr().heats
   for i = 1, getn(hs) do
-    if not best or hs[i].total < best.total then best = hs[i] end
+    if not hs[i].bad and (not best or hs[i].total < best.total) then best = hs[i] end
   end
   return best
 end
@@ -318,7 +403,7 @@ function SR:PeriodStats(from)
   local n, best, gold = 0, nil, nil
   for i = 1, getn(hs) do
     local h = hs[i]
-    if not from or h.at >= from then
+    if (not from or h.at >= from) and not h.bad then
       n = n + 1
       if not best or h.total < best then best = h.total end
       if h.gold then gold = (gold or 0) + h.gold end
@@ -329,10 +414,14 @@ end
 
 function SR:HeatAvg()
   local hs = sr().heats
-  local n = getn(hs)
+  local n, s = 0, 0
+  for i = 1, getn(hs) do
+    if not hs[i].bad then
+      n = n + 1
+      s = s + hs[i].total
+    end
+  end
   if n == 0 then return nil end
-  local s = 0
-  for i = 1, n do s = s + hs[i].total end
   return s / n
 end
 

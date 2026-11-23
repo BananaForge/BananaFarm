@@ -8,7 +8,7 @@ Lasher farming helper for Dire Maul East on OctoWoW (Vanilla 1.12 client with Su
 
 English and German, switch with `/bf lang en|de|auto`.
 
-Version 0.7.0
+Version 0.7.1
 
 ## Getting started
 
@@ -64,7 +64,9 @@ Everything else is in **Settings**. Hover over an option for an explanation.
 - **Heat:** 5 laps (reset limit). After that, the next lap 1 starts at the portal again. Stopping the session deletes an incomplete heat.
 - The bar shows `Lap 1 xx:xx | Lap 2 xx:xx | ...`, the running lap in gold.
 - Dashboard with tiles, the current heat (discard button), recent heats with Whip Lasher kills and loot per lap, and posting to chat.
-- **Lap data:** `/bf lapstats` or the "Lap data" button shows time, Whip Lasher kills, all kills and loot per lap as text to copy.
+- **Lap check:** after every reset BananaFarm checks the lap (at least 2 minutes, 78 Whip Lashers, 2g loot, no second character in the instance) and tells you right away if it does not count. Invalid laps do not count for best times.
+- **Rules:** a rules window appears when you turn on the Speedrun module and before you join an event, and via the "Rules" button.
+- **Lap data:** `/bf lapstats` or the "Lap data" button shows time, Whip Lasher kills, all kills, loot and looted corpses per lap as text to copy.
 
 ### Guild Tournament (optional)
 - Leaderboards with your guild: fastest heat, week, month and overall, sortable by heats, best time or gold (gold only if you share it).
@@ -81,7 +83,7 @@ Everything else is in **Settings**. Hover over an option for an explanation.
 - Players join with a fighter name (free text or random). The overview shows fighter name, character, class, guild, value and witnesses.
 - **Witnesses:** every client in the channel records when a participant's heat starts and ends. Others pass this on when someone comes online, so the organizer does not have to be online. A heat whose claimed time is clearly shorter than what witnesses saw does not count.
 - The event ends with a winners pop-up.
-- Version 0.7.0 has no entry fee and no prize money. That part will only come after written approval from the OctoWoW team.
+- Version 0.7.1 has no entry fee and no prize money. That part will only come after written approval from the OctoWoW team.
 
 ### Wish list
 - Shift-click an item into the list, enter mob name and drop rate. BananaFarm counts your kills and shows your chance so far and how many kills are still needed.

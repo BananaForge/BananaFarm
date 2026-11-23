@@ -334,16 +334,18 @@ function EV:OnHeat(e)
   h.total, h.laps, h.kills, h.loot = e.total, e.laps, e.kills, e.loot
   h.wit[me] = h.wit[me] or {}
   h.wit[me].e = time()
+  h.solo = e.solo
   self:Send("F~" .. ev.id .. "~" .. e.hid .. "~" .. floor(e.total) .. "~" .. table.concat(e.laps, ",") .. "~"
-    .. table.concat(e.kills or {}, ",") .. "~" .. table.concat(e.loot or {}, ","))
+    .. table.concat(e.kills or {}, ",") .. "~" .. table.concat(e.loot or {}, ",") .. "~" .. table.concat(e.solo or {}, ","))
   if BF.UI then BF.UI:RefreshSpeedrun() end
 end
 
-local function takeHeatData(h, total, laps, kills, loot)
+local function takeHeatData(h, total, laps, kills, loot, solo)
   h.total = tonumber(total)
   h.laps = nums(laps)
   h.kills = nums(kills)
   h.loot = nums(loot)
+  if solo and solo ~= "" then h.solo = nums(solo) end
 end
 
 -- Wertung eines Durchgangs: ok, Zeit, Zahl fremder Zeugen, Grund (Locale-Schluessel)
@@ -356,6 +358,7 @@ function EV:Check(name, h)
     if h.laps[i] < ev.minLap then return false, nil, 0, "EVR_MINLAP" end
     if ev.minKills > 0 and (h.kills[i] or 0) < ev.minKills then return false, nil, 0, "EVR_KILLS" end
     if ev.minLoot > 0 and (h.loot[i] or 0) < ev.minLoot then return false, nil, 0, "EVR_LOOT" end
+    if h.solo and h.solo[i] == 0 then return false, nil, 0, "EVR_HELPER" end
   end
   -- fremde Zeugen: gesehene Spanne zwischen Start und Ende
   local seen, nw = {}, 0
@@ -437,7 +440,7 @@ function EV:Relay(forWhom)
       end
       self:Send("RH~" .. ev.id .. "~" .. name .. "~" .. hid .. "~" .. (h.total or 0) .. "~"
         .. table.concat(h.laps or {}, ",") .. "~" .. table.concat(h.kills or {}, ",") .. "~"
-        .. table.concat(h.loot or {}, ",") .. "~" .. table.concat(ws, ";"))
+        .. table.concat(h.loot or {}, ",") .. "~" .. table.concat(ws, ";") .. "~" .. table.concat(h.solo or {}, ","))
     end
   end
 end
@@ -479,7 +482,7 @@ function EV:OnMessage(msg, sender)
   elseif kind == "F" then
     if ev and ev.id == f[1] and db().parts[sender] then
       local h = heatRec(sender, f[2])
-      takeHeatData(h, f[3], f[4], f[5], f[6])
+      takeHeatData(h, f[3], f[4], f[5], f[6], f[7])
       local me = UnitName("player")
       h.wit[me] = h.wit[me] or {}
       h.wit[me].e = now
@@ -487,7 +490,7 @@ function EV:OnMessage(msg, sender)
   elseif kind == "RH" then
     if ev and ev.id == f[1] and db().parts[f[2]] then
       local h = heatRec(f[2], f[3])
-      if not h.total then takeHeatData(h, f[4], f[5], f[6], f[7]) end
+      if not h.total then takeHeatData(h, f[4], f[5], f[6], f[7], f[9]) end
       for w, s, e in string.gfind(f[8] or "", "([^,;]+),(%d+),(%d+)") do
         local r = h.wit[w] or {}
         if not r.s and tonumber(s) > 0 then r.s = tonumber(s) end
@@ -652,7 +655,8 @@ function UI:BuildEventPage(p)
   e.dice:SetPoint("LEFT", e.fBox, "RIGHT", 4, 0)
   self:Tip(e.dice, "EV_DICE", "EV_DICE_TT")
   e.join = self:Button(p, 120, 22, "EV_JOIN", function()
-    BF.Event:Register(e.fBox:GetText())
+    local name = e.fBox:GetText()
+    UI:ShowRules(function() BF.Event:Register(name) end)
   end, "ok")
   e.join:SetPoint("LEFT", e.dice, "RIGHT", 8, 0)
   e.me = self:Font(p, 11, C.gold)
@@ -867,9 +871,9 @@ function UI:ShowEventCreate()
   f.fields.ed:SetText(date("%d.%m.%Y", start + 7 * 86400))
   f.fields.et:SetText(date("%H:%M", start))
   f.fields.max:SetText("0")
-  f.fields.minLap:SetText("5")
-  f.fields.minKills:SetText("0")
-  f.fields.minLoot:SetText("5")
+  f.fields.minLap:SetText("2")
+  f.fields.minKills:SetText("78")
+  f.fields.minLoot:SetText("2")
   f.rankSel = "best"
   f.regSel = "end"
   f.selfOk = true
@@ -899,8 +903,8 @@ function UI:EventCreateGo()
     return v
   end
   BF.Event:Create({ start = start, finish = finish, rank = f.rankSel, max = floor(n(F.max, 0)),
-    reg = f.regSel, minLap = floor(n(F.minLap, 5) * 60), minKills = floor(n(F.minKills, 0)),
-    minLoot = floor(n(F.minLoot, 5) * 10000), selfOk = f.selfOk })
+    reg = f.regSel, minLap = floor(n(F.minLap, 2) * 60), minKills = floor(n(F.minKills, 78)),
+    minLoot = floor(n(F.minLoot, 2) * 10000), selfOk = f.selfOk })
   f:Hide()
 end
 
