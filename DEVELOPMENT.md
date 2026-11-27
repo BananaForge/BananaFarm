@@ -62,6 +62,12 @@ SavedVariables: `BananaFarmDB` (Felder in `Core.lua`, `BF:InitDB`).
 - **Relog-Bug Gold/h (behoben in 0.1.1, ungetestet):** Beim Laden waren Taschen und Gold noch leer. Der Snapshot war leer, die ganze Tasche zählte danach als Beute, und `t0` wurde ohne Sicherung der bisherigen Laufzeit überschrieben. Jetzt: Snapshot erst 3 s nach `PLAYER_ENTERING_WORLD`, Laufzeit wird bei `PLAYER_LOGOUT` gesichert.
 - **Roter Lua-Fehler im Chat** (`api.lua:458: GameTooltip doesn't have a "OnTooltipSetItem"`): Quelle unbekannt, vermutlich ein anderes Addon (nicht TurtleMail). Vollständigen Pfad aus der Fehlermeldung nachreichen.
 
+## Stand 0.7.2 (ungetestet im Spiel, nur simuliert)
+
+- **Session-Autostart (Session.lua `Session:CheckZone`):** Läuft keine Session, startet sie beim Betreten von Düsterbruch (`BF.InDireMaul()` in Core.lua, Zonennamen DE/EN/FR/ES, nur in der Instanz), auch ohne Speedrun-Modul. Danach `Speedrun:CheckZone` (Lap 1). Option `sessionAutoStart` (Einstellungen, Session), Standard an.
+- **Minimap-Symbol (neu: Minimap.lua, Minimap.tga 64x64 aus dem Podest-Bild):** Linksklick Hauptfenster an/aus, Ziehen verschiebt (`minimapAngle`). Rechtsklick Menü: Hauptfenster, Tracking-Leiste, Listen-Modul an/aus, Session starten/stoppen, Einstellungen. Option `minimap` (Einstellungen, Allgemein).
+- **Event-Ansicht:** Banner nicht mehr beschnitten (Event.tga 512x256, Bild links 455x256, `SetTexCoord`), Infos in drei Zeilen (Zeitraum/Wertung/Teilnehmer, Regeln, Zeugen/Anmeldung/Organisator), Beute als "2g" statt "2g 0s 0c".
+
 ## Stand 0.7.1 (ungetestet im Spiel, nur simuliert)
 
 - **Lap-Prüfung (Speedrun.lua):** `SR.RULES` = 2 min, 78 Whip Lasher, 2g (ohne Event); im laufenden Event, bei dem man angemeldet ist, dessen Werte (`SR:Rules`). `SR:EndLap` prüft jede Lap sofort (`SR:LapProblems`), markiert sie `bad` und meldet im Chat und oben auf dem Bildschirm, z. B. "Lap 2 zählt nicht: zu kurz, nur 40 Whip Lasher". Ungültige Laps und Durchgänge mit einer ungültigen Lap zählen nicht für Bestzeiten, Schnitt und Gilden Tournament (`LapStats`, `BestHeat`, `PeriodStats`, `HeatAvg`), in der Liste "ungültig".

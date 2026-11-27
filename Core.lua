@@ -9,7 +9,7 @@
 BananaFarm = {}
 local BF = BananaFarm
 
-BF.VERSION = "0.7.1"
+BF.VERSION = "0.7.2"
 BF.ICON = "Interface\\AddOns\\BananaFarm\\Icon"
 BF.CHAMP_ICON = "Interface\\AddOns\\BananaFarm\\Champions"
 BF.EVENT_BANNER = "Interface\\AddOns\\BananaFarm\\Event"
@@ -232,6 +232,14 @@ function BF.IsSoulbound(bag, slot)
   return false
 end
 
+-- In der Instanz Duesterbruch / Dire Maul? (Ost und West heissen gleich)
+BF.DM_ZONES = { ["dire maul"] = true, ["düsterbruch"] = true, ["hache-tripes"] = true, ["la masacre"] = true }
+function BF.InDireMaul()
+  if not IsInInstance or not IsInInstance() then return false end
+  local zone = string.lower((GetRealZoneText and GetRealZoneText()) or (GetZoneText and GetZoneText()) or "")
+  return BF.DM_ZONES[zone] and true or false
+end
+
 -- Ein Fenster offen, in dem sich Taschen und Gold aus anderen Gruenden aendern?
 function BF.Busy()
   if BF.mailOpen or BF.merchantOpen or BF.ahOpen or BF.bankOpen or BF.tradeOpen then return true end
@@ -294,6 +302,8 @@ BF.DEFAULTS = {
   offlineMax = 900,    -- laengere Pausen (Sekunden) zaehlen nicht, z. B. ueber Nacht ausgeloggt
   repairCost = true,   -- Reparaturkosten in der Session vom Wert abziehen
   srAutoStart = true,  -- Speedrun: Stoppuhr beim Betreten von Duesterbruch starten
+  sessionAutoStart = true, -- Session beim Betreten von Duesterbruch starten, falls keine laeuft
+  minimap = true,      -- Minimap-Symbol anzeigen
   champGold = false,   -- Lasher Championships: eigenes Gold mit der Gilde teilen
 }
 

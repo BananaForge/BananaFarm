@@ -8,14 +8,16 @@ Lasher farming helper for Dire Maul East on OctoWoW (Vanilla 1.12 client with Su
 
 English and German, switch with `/bf lang en|de|auto`.
 
-Version 0.7.1
+Version 0.7.2
 
 ## Getting started
 
 1. **Setup:** On first start you pick your language and the modules you want. Then you enter your twink (bank alt) and your mail characters. Both can be skipped.
-2. **Start a session:** Button in the small bar or in the main window (`/bf`). From now on BananaFarm counts time, loot, gold per hour and resets.
+2. **Start a session:** It starts by itself when you enter Dire Maul (can be turned off), or use the button in the small bar, the main window (`/bf`) or the minimap button. From now on BananaFarm counts time, loot, gold per hour and resets.
 3. **Farm:** New items are sorted automatically. If an item has no AH price, a small pop-up asks where it should go.
 4. **Open a vendor or mailbox:** The vendor list is sold, the mail list is sent to your bank alt after a confirmation.
+
+**Minimap button:** left click opens the main window, right click opens a menu (main window, tracking bar, lists module, session, settings), drag to move it.
 
 Everything else is in **Settings**. Hover over an option for an explanation.
 
@@ -83,7 +85,7 @@ Everything else is in **Settings**. Hover over an option for an explanation.
 - Players join with a fighter name (free text or random). The overview shows fighter name, character, class, guild, value and witnesses.
 - **Witnesses:** every client in the channel records when a participant's heat starts and ends. Others pass this on when someone comes online, so the organizer does not have to be online. A heat whose claimed time is clearly shorter than what witnesses saw does not count.
 - The event ends with a winners pop-up.
-- Version 0.7.1 has no entry fee and no prize money. That part will only come after written approval from the OctoWoW team.
+- Version 0.7.2 has no entry fee and no prize money. That part will only come after written approval from the OctoWoW team.
 
 ### Wish list
 - Shift-click an item into the list, enter mob name and drop rate. BananaFarm counts your kills and shows your chance so far and how many kills are still needed.

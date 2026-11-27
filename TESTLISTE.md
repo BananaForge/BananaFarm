@@ -230,3 +230,9 @@ Fehler bitte im Wortlaut notieren (Chatzeilen, Lua-Fehler mit Dateiname und Zeil
 - [ ] Lap-Daten: Spalte looted_corpses. Wie viele Leichen lootet ihr pro Lap, wenn alles eingesammelt wird? (Dann können wir "Loot komplett" prüfen.)
 - [ ] Dashboard: Kacheln ohne Überlappung, Lap-Felder mit Whip Lasher und Beute, Klick auf einen Durchgang zeigt ihn oben. Screenshot.
 - [ ] Einrichtungsfenster: "Fertig" frei, Anleitung neu.
+
+## 0.7.2: neu zu testen
+- [ ] Ohne laufende Session nach Düsterbruch: startet die Session von selbst (Chatmeldung)? Auch mit Speedrun aus?
+- [ ] Minimap-Symbol: Linksklick öffnet/schließt das Hauptfenster, Ziehen verschiebt es, Position bleibt nach /reload.
+- [ ] Rechtsklick-Menü: alle 5 Einträge (Hauptfenster, Leiste, Listen-Modul, Session, Einstellungen) tun das Richtige, Text wechselt (ein/aus).
+- [ ] Event-Ansicht: Banner vollständig, Infozeilen überlappen nicht, Beute "2g". Screenshot.

@@ -781,6 +781,7 @@ function UI:BuildSettings(p)
     self.langBtns[code] = b
   end
   y = y - 28
+  checkRow("CHK_MINIMAP", "minimap", function() UI:PlaceMinimap() end)
   buttonRow({
     { "BTN_HOWTO", 110, function() UI:ShowSetupStep("howto") end, "flat", "TT_HOWTO" },
     { "BTN_SETUP", 110, function() UI:ShowSetup() end, "flat", "TT_SETUP" },
@@ -791,6 +792,7 @@ function UI:BuildSettings(p)
   -- Session und Leiste
   section("SEC_TRACKING", "tracking", "MOD_TRACKING")
   checkRow("CHK_BAR", "bar", function() UI:Refresh() end)
+  checkRow("CHK_SESSAUTO", "sessionAutoStart")
   checkRow("CHK_OFFLINE", "offlineTime")
   checkRow("CHK_REPAIR", "repairCost")
   editRow("SET_BAGWARN", "BananaFarmEditBagWarn", 50,

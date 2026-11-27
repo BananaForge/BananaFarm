@@ -317,6 +317,19 @@ function Session:OnBags()
   if BF.UI then BF.UI:RefreshList() end
 end
 
+-- Session startet beim Betreten von Duesterbruch von selbst, falls noch keine laeuft
+-- (Option sessionAutoStart, unabhaengig vom Speedrun-Modul). Danach darf die Stoppuhr starten.
+function Session:CheckZone()
+  if not BF.ready or self:Running() or not BananaFarmDB.sessionAutoStart then return end
+  if not BF.InDireMaul() then return end
+  self:Start()
+  BF:Print(BF.T("MSG_SESSION_AUTO"))
+  if BF.Speedrun then BF.Speedrun:CheckZone() end
+end
+
+BF:On("ZONE_CHANGED_NEW_AREA", function() BF:After(1, function() Session:CheckZone() end, "sesszone") end)
+BF:On("PLAYER_ENTERING_WORLD", function() BF:After(2, function() Session:CheckZone() end, "sesszone") end)
+
 -- BAG_UPDATE feuert pro Tasche und oft mehrfach: zusammenfassen
 BF:On("BAG_UPDATE", function()
   BF:After(0.3, function() Session:OnBags() end, "bags")

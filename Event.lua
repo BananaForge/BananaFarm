@@ -600,7 +600,7 @@ end
 -- ------------------------------------------------------------
 local UI = BF.UI
 local T = function(k) return BF.T(k) end
-local EV_ROWS = 8
+local EV_ROWS = 7
 
 local CLASS_HEX = { WARRIOR = "c79c6e", PALADIN = "f58cba", HUNTER = "abd473", ROGUE = "fff569", PRIEST = "ffffff",
   SHAMAN = "0070de", MAGE = "69ccf0", WARLOCK = "9482c9", DRUID = "ff7d0a" }
@@ -621,26 +621,33 @@ function UI:BuildEventPage(p)
   self.ev = e
   local banner = p:CreateTexture(nil, "ARTWORK")
   banner:SetTexture(BF.EVENT_BANNER)
-  -- Bild im Format 2:1, unbeschnitten (der Schriftzug steht oben)
-  banner:SetWidth(300)
-  banner:SetHeight(150)
+  -- ganzes Bild (16:9) links in der 512x256-Textur, rechts transparent aufgefuellt
+  banner:SetTexCoord(0, 455 / 512, 0, 1)
+  banner:SetWidth(296)
+  banner:SetHeight(166)
   banner:SetPoint("TOP", p, "TOP", 0, -32)
 
   e.title = self:Font(p, 15, C.gold, "Fonts\\MORPHEUS.TTF")
-  e.title:SetPoint("TOPLEFT", p, "TOPLEFT", 16, -188)
+  e.title:SetPoint("TOPLEFT", p, "TOPLEFT", 16, -202)
   e.state = self:Font(p, 11, C.text)
-  e.state:SetPoint("TOPRIGHT", p, "TOPRIGHT", -16, -190)
+  e.state:SetPoint("TOPRIGHT", p, "TOPRIGHT", -16, -204)
   e.state:SetJustifyH("RIGHT")
   e.info1 = self:Font(p, 10, C.text)
-  e.info1:SetPoint("TOPLEFT", p, "TOPLEFT", 16, -208)
+  e.info1:SetPoint("TOPLEFT", p, "TOPLEFT", 16, -222)
   e.info1:SetWidth(448)
+  e.info1:SetHeight(12)
   e.info2 = self:Font(p, 10, C.muted)
-  e.info2:SetPoint("TOPLEFT", p, "TOPLEFT", 16, -222)
+  e.info2:SetPoint("TOPLEFT", p, "TOPLEFT", 16, -236)
   e.info2:SetWidth(448)
+  e.info2:SetHeight(12)
+  e.info3 = self:Font(p, 10, C.muted)
+  e.info3:SetPoint("TOPLEFT", p, "TOPLEFT", 16, -250)
+  e.info3:SetWidth(448)
+  e.info3:SetHeight(12)
 
   -- Anmeldung
   e.fLabel = self:Font(p, 11, C.text)
-  e.fLabel:SetPoint("TOPLEFT", p, "TOPLEFT", 16, -246)
+  e.fLabel:SetPoint("TOPLEFT", p, "TOPLEFT", 16, -270)
   self:Loc(e.fLabel, "EV_FIGHTER")
   e.fBox = CreateFrame("EditBox", "BananaFarmEventFighter", p, "InputBoxTemplate")
   e.fBox:SetWidth(150)
@@ -660,20 +667,20 @@ function UI:BuildEventPage(p)
   end, "ok")
   e.join:SetPoint("LEFT", e.dice, "RIGHT", 8, 0)
   e.me = self:Font(p, 11, C.gold)
-  e.me:SetPoint("TOPLEFT", p, "TOPLEFT", 16, -246)
+  e.me:SetPoint("TOPLEFT", p, "TOPLEFT", 16, -270)
 
   local cols = { { "EV_C_RANK", 16 }, { "EV_C_FIGHTER", 40 }, { "EV_C_CHAR", 160 }, { "EV_C_GUILD", 260 },
     { "EV_C_VALUE", 360 }, { "EV_C_WIT", 420 } }
   for i = 1, getn(cols) do
     local fs = self:Font(p, 10, C.muted)
-    fs:SetPoint("TOPLEFT", p, "TOPLEFT", cols[i][2], -274)
+    fs:SetPoint("TOPLEFT", p, "TOPLEFT", cols[i][2], -296)
     self:Loc(fs, cols[i][1])
   end
   for i = 1, EV_ROWS do
     local r = CreateFrame("Frame", nil, p)
     r:SetHeight(19)
-    r:SetPoint("TOPLEFT", p, "TOPLEFT", 14, -288 - (i - 1) * 20)
-    r:SetPoint("TOPRIGHT", p, "TOPRIGHT", -14, -288 - (i - 1) * 20)
+    r:SetPoint("TOPLEFT", p, "TOPLEFT", 14, -310 - (i - 1) * 20)
+    r:SetPoint("TOPRIGHT", p, "TOPRIGHT", -14, -310 - (i - 1) * 20)
     local bg = r:CreateTexture(nil, "BACKGROUND")
     bg:SetTexture("Interface\\ChatFrame\\ChatFrameBackground")
     bg:SetAllPoints(r)
@@ -689,7 +696,7 @@ function UI:BuildEventPage(p)
     e.rows[i] = r
   end
   e.empty = self:Font(p, 11, C.muted)
-  e.empty:SetPoint("TOPLEFT", p, "TOPLEFT", 30, -300)
+  e.empty:SetPoint("TOPLEFT", p, "TOPLEFT", 30, -322)
   e.empty:SetWidth(420)
   e.empty:SetJustifyH("LEFT")
 
@@ -705,7 +712,7 @@ function UI:BuildEventPage(p)
   e.note:SetJustifyH("LEFT")
   self:Loc(e.note, "EV_NOTE")
   e.off = self:Font(p, 11, C.text)
-  e.off:SetPoint("TOPLEFT", p, "TOPLEFT", 30, -250)
+  e.off:SetPoint("TOPLEFT", p, "TOPLEFT", 30, -270)
   e.off:SetWidth(420)
   e.off:SetJustifyH("LEFT")
   self:Loc(e.off, "EV_OFF")
@@ -733,6 +740,7 @@ function UI:RefreshEventPage()
     e.state:SetText("")
     e.info1:SetText(on and T("EV_NONE") or "")
     e.info2:SetText("")
+    e.info3:SetText("")
     for _, f in ipairs({ e.fLabel, e.fBox, e.dice, e.join, e.me, e.empty }) do f:Hide() end
     for i = 1, EV_ROWS do e.rows[i]:Hide() end
     return
@@ -750,9 +758,12 @@ function UI:RefreshEventPage()
   if not ev.confirmed then stText = stText .. "  |cffff9040" .. T("EV_UNCONFIRMED") .. "|r" end
   e.state:SetText(stText)
   e.info1:SetText(string.format(T("EV_INFO1"), date("%d.%m. %H:%M", ev.start), date("%d.%m. %H:%M", ev.finish),
-    rankName(ev.rank), EVM:Count(), ev.max > 0 and tostring(ev.max) or "-", ev.org))
-  e.info2:SetText(string.format(T("EV_INFO2"), floor(ev.minLap / 60), ev.minKills, BF.Money(ev.minLoot),
-    T(ev.selfOk and "YES" or "NO"), T(ev.reg == "start" and "EV_REG_START" or "EV_REG_END")))
+    rankName(ev.rank), EVM:Count(), ev.max > 0 and tostring(ev.max) or "-"))
+  -- Beute als ganze Gold, wenn sie aufgeht ("2g" statt "2g 0s 0c")
+  local loot = BF.mod(ev.minLoot, 10000) == 0 and (floor(ev.minLoot / 10000) .. "g") or BF.Money(ev.minLoot)
+  e.info2:SetText(string.format(T("EV_INFO2"), floor(ev.minLap / 60), ev.minKills, loot))
+  e.info3:SetText(string.format(T("EV_INFO3"), T(ev.selfOk and "YES" or "NO"),
+    T(ev.reg == "start" and "EV_REG_START" or "EV_REG_END"), ev.org))
   -- Anmeldung
   local can = EVM:CanJoin()
   if joined then
@@ -913,14 +924,15 @@ function UI:ShowEventWinners(rows)
   local C = self.C
   local f = self.evWin
   if not f then
-    f = self:Window("BananaFarmEventWinners", 400, 340)
+    f = self:Window("BananaFarmEventWinners", 400, 360)
     self.evWin = f
     if not BananaFarmDB.pos["BananaFarmEventWinners"] then f:SetPoint("CENTER", UIParent, "CENTER", 0, 60) end
     tinsert(UISpecialFrames, "BananaFarmEventWinners")
     local banner = f:CreateTexture(nil, "ARTWORK")
     banner:SetTexture(BF.EVENT_BANNER)
+    banner:SetTexCoord(0, 455 / 512, 0, 1)
     banner:SetWidth(320)
-    banner:SetHeight(160)
+    banner:SetHeight(180)
     banner:SetPoint("TOP", f, "TOP", 0, -12)
     f.sub = self:Font(f, 12, C.gold)
     f.sub:SetPoint("TOP", banner, "BOTTOM", 0, -8)

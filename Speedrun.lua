@@ -27,8 +27,6 @@ local MAX_HEATS = 200
 SR.RULES = { minLap = 120, minKills = 78, minLoot = 20000 }
 -- Lasher, die pro Lap gezaehlt werden (Kleinbuchstaben; zusaetzlich zaehlt alles mit "lasher" im Namen)
 SR.LASHERS = { ["whip lasher"] = true }
--- Zonenname von Duesterbruch in den Client-Sprachen (fuer den Autostart)
-local DM_ZONES = { ["dire maul"] = true, ["düsterbruch"] = true, ["hache-tripes"] = true, ["la masacre"] = true }
 
 local function refresh()
   if BF.UI then BF.UI:Refresh() end
@@ -352,9 +350,7 @@ end
 function SR:CheckZone()
   if not BF.ready or not BF:Enabled("speedrun") or not BananaFarmDB.srAutoStart then return end
   if not BF.Session:Running() then return end
-  if not IsInInstance or not IsInInstance() then return end
-  local zone = string.lower((GetRealZoneText and GetRealZoneText()) or (GetZoneText and GetZoneText()) or "")
-  if not DM_ZONES[zone] then return end
+  if not BF.InDireMaul() then return end
   local d = sr()
   if d.sw.running or getn(d.heat.laps) > 0 then return end
   self:StartLap()
